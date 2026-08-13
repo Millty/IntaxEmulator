@@ -160,17 +160,36 @@
         App.state.photos[idx] = { src: reader.result, img, dx: 0, dy: 0 };
         renderCell(idx);
         updateHint();
+        if (App.stack[App.stack.length - 1] === 'editor') refreshThumbs();
       };
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
   }
 
+  /* 取第一张已上传照片作为滤镜缩略图源；无则用样本图 */
+  function firstPhotoImg() {
+    for (let i = 0; i < App.state.photos.length; i++) {
+      const p = App.state.photos[i];
+      if (p && p.img) return p.img;
+    }
+    return null;
+  }
+
+  let _filterThumbs = [];   // 记录每款滤镜的缩略图 canvas，便于上传后刷新
+
   function buildFilterBar() {
     const bar = $('#filterBar');
     bar.innerHTML = '';
+    _filterThumbs = [];
     App.FILTERS.forEach((f) => {
-      const b = App.el('button', 'fpill' + (f.id === App.state.filterId ? ' sel' : ''), f.name);
+      const b = App.el('button', 'fpill' + (f.id === App.state.filterId ? ' sel' : ''));
+      const thumb = App.el('span', 'fpill-thumb');
+      const cv = document.createElement('canvas');
+      cv.width = 108; cv.height = 108;          // 2x 清晰度
+      thumb.appendChild(cv);
+      const name = App.el('span', 'fpill-name', f.name);
+      b.append(thumb, name);
       b.addEventListener('click', () => {
         App.state.filterId = f.id;
         $$('#filterBar .fpill').forEach((x) => x.classList.remove('sel'));
@@ -178,7 +197,15 @@
         for (let i = 0; i < App.state.mode; i++) renderCell(i);
       });
       bar.appendChild(b);
+      _filterThumbs.push({ canvas: cv, def: f });
     });
+    refreshThumbs();
+  }
+
+  /* 重新绘制滤镜缩略图（上传照片后调用，让预览用真实照片） */
+  function refreshThumbs() {
+    const src = firstPhotoImg() || App.getSample();
+    _filterThumbs.forEach((t) => App.drawFilterThumb(t.canvas, src, t.def, 1));
   }
 
   $('#btnConfirm').addEventListener('click', () => App.go('develop'));
