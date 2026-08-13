@@ -129,6 +129,11 @@
 }
 .ecell-empty svg { width: 34px; height: 34px; }
 
+.editor-hint {
+  margin: 0; padding: 8px 4px 0; text-align: center;
+  font-size: 13px; color: var(--label-2); line-height: 1.4;
+}
+
 /* 滤镜胶囊条 */
 .filter-bar {
   flex: none; display: flex; gap: 10px; overflow-x: auto;

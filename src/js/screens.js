@@ -47,7 +47,6 @@
 
   /* —— ③ 编辑：上传 + 居中相纸 + 每格拖拽取景 + 滤镜实时预览 —— */
   const PLUS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
-  let _pendingStart = 0;
 
   App.registerScreen('editor', function () { buildEditor(); });
 
@@ -79,6 +78,16 @@
       renderCell(i);
     }
     buildFilterBar();
+    updateHint();
+  }
+
+  function updateHint() {
+    const hint = $('#editorHint');
+    if (!hint) return;
+    if (App.state.mode === 1) { hint.textContent = ''; return; }
+    const empty = App.state.photos.filter(p => !(p && p.img)).length;
+    if (empty === 0) hint.textContent = '已选满 ' + App.state.mode + ' 张 · 点格子可替换';
+    else hint.textContent = '还需上传 ' + empty + ' 张（点「上传」可一次多选，每格独立）';
   }
 
   function hasPhoto(i) {
@@ -127,17 +136,17 @@
     });
   }
 
-  /* 文件选择：从 startIndex 起顺序填充（支持多选一次填多格） */
-  function openPicker(startIndex, multiple) {
-    _pendingStart = startIndex;
+  /* 文件选择：多格时按 emptyList（空格顺序）每格一张独立照片；单格填 startIndex */
+  function openPicker(startIndex, multiple, emptyList) {
     const inp = $('#fileInput');
-    inp.multiple = !!multiple;
+    inp.multiple = !!multiple && App.state.mode > 1;
     inp.value = '';
     inp.onchange = () => {
       const files = Array.from(inp.files || []);
+      const targets = (emptyList && emptyList.length) ? emptyList : [startIndex];
       files.forEach((f, idx) => {
-        const ci = startIndex + idx;
-        if (ci >= App.state.mode) return;
+        const ci = targets[idx];          // 每张照片落到各自独立的格子
+        if (ci == null) return;
         loadFile(f, ci);
       });
     };
@@ -151,6 +160,7 @@
       img.onload = () => {
         App.state.photos[idx] = { src: reader.result, img, dx: 0, dy: 0 };
         renderCell(idx);
+        updateHint();
       };
       img.src = reader.result;
     };
@@ -173,10 +183,11 @@
   }
 
   $('#btnUpload').addEventListener('click', () => {
-    // 从第一个空格开始填充；若已满则从头重选
-    let start = App.state.photos.findIndex((p) => !(p && p.img));
-    if (start < 0) start = 0;
-    openPicker(start, true);
+    // 收集所有空格，一次性多选按空格顺序每格填一张独立照片（绝不重复）
+    const empties = [];
+    for (let i = 0; i < App.state.mode; i++) if (!hasPhoto(i)) empties.push(i);
+    if (empties.length === 0) { openPicker(0, true); return; }
+    openPicker(empties[0], true, empties);
   });
   $('#btnConfirm').addEventListener('click', () => App.go('develop'));
 
