@@ -95,13 +95,6 @@
 
 /* —— ③ 编辑屏 —— */
 .editor { background: var(--bg); }
-.nav-upload {
-  width: 44px; height: 44px; border: 0; background: none;
-  color: var(--accent); display: grid; place-items: center; cursor: pointer;
-  transition: opacity .15s, transform .12s;
-}
-.nav-upload svg { width: 24px; height: 24px; }
-.nav-upload:active { opacity: .5; transform: scale(.92); }
 
 .editor-stage {
   flex: 1; display: grid; place-items: center;

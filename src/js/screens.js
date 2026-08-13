@@ -72,7 +72,7 @@
       const canvas = App.el('canvas', 'ecanvas');
       const empty = App.el('div', 'ecell-empty', PLUS_SVG);
       cell.append(canvas, empty);
-      cell.addEventListener('click', () => { if (!hasPhoto(i)) openPicker(i, false); });
+      cell.addEventListener('click', () => { if (!hasPhoto(i)) openPicker(i); });
       attachDrag(cell, i);
       grid.appendChild(cell);
       renderCell(i);
@@ -84,10 +84,14 @@
   function updateHint() {
     const hint = $('#editorHint');
     if (!hint) return;
-    if (App.state.mode === 1) { hint.textContent = ''; return; }
+    if (App.state.mode === 1) {
+      const filled = hasPhoto(0);
+      hint.textContent = filled ? '可拖拽调整取景' : '点击相纸中央选择照片';
+      return;
+    }
     const empty = App.state.photos.filter(p => !(p && p.img)).length;
     if (empty === 0) hint.textContent = '已选满 ' + App.state.mode + ' 张 · 点格子可替换';
-    else hint.textContent = '还需上传 ' + empty + ' 张（点「上传」可一次多选，每格独立）';
+    else hint.textContent = '点击每个空白格子上传照片（还需 ' + empty + ' 张）';
   }
 
   function hasPhoto(i) {
@@ -136,19 +140,14 @@
     });
   }
 
-  /* 文件选择：多格时按 emptyList（空格顺序）每格一张独立照片；单格填 startIndex */
-  function openPicker(startIndex, multiple, emptyList) {
+  /* 文件选择：单次选 1 张，落到指定格子（每格独立，不依赖 multiple） */
+  function openPicker(i) {
     const inp = $('#fileInput');
-    inp.multiple = !!multiple && App.state.mode > 1;
+    inp.multiple = false;          // 移动端多选不可靠，统一单次选，按格点击
     inp.value = '';
     inp.onchange = () => {
-      const files = Array.from(inp.files || []);
-      const targets = (emptyList && emptyList.length) ? emptyList : [startIndex];
-      files.forEach((f, idx) => {
-        const ci = targets[idx];          // 每张照片落到各自独立的格子
-        if (ci == null) return;
-        loadFile(f, ci);
-      });
+      const f = inp.files && inp.files[0];
+      if (f) loadFile(f, i);
     };
     inp.click();
   }
@@ -182,13 +181,6 @@
     });
   }
 
-  $('#btnUpload').addEventListener('click', () => {
-    // 收集所有空格，一次性多选按空格顺序每格填一张独立照片（绝不重复）
-    const empties = [];
-    for (let i = 0; i < App.state.mode; i++) if (!hasPhoto(i)) empties.push(i);
-    if (empties.length === 0) { openPicker(0, true); return; }
-    openPicker(empties[0], true, empties);
-  });
   $('#btnConfirm').addEventListener('click', () => App.go('develop'));
 
   // 视口变化时重绘当前编辑格（保持清晰度）
