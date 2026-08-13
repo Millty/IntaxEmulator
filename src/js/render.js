@@ -28,7 +28,7 @@ window.App = window.App || {};
 
   /* 把照片绘制进 canvas：cover 适配 + 用户平移(dx,dy) + 滤镜 + 颗粒 + 暗角
      返回校正后的 {dx, dy}（已按 cover 余量夹紧，避免露白边） */
-  App.drawPhoto = function (canvas, img, dx, dy, filterDef, intensity) {
+  App.drawPhoto = function (canvas, img, dx, dy, filterDef, intensity, scale) {
     const ctx = canvas.getContext('2d');
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -38,11 +38,13 @@ window.App = window.App || {};
     if (canvas.height !== H) canvas.height = H;
     ctx.clearRect(0, 0, W, H);
 
-    if (!img || !img.complete || !img.naturalWidth) return { dx: dx || 0, dy: dy || 0 };
+    if (!img || !img.complete || !img.naturalWidth) return { dx: dx || 0, dy: dy || 0, scale: scale || 1 };
 
     intensity = intensity == null ? 1 : intensity;
-    const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight); // cover
-    const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+    const userScale = Math.max(1, scale || 1);               // 不允许缩到比 cover 还小（避免露白）
+    const coverScale = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+    const s = coverScale * userScale;
+    const dw = img.naturalWidth * s, dh = img.naturalHeight * s;
     const baseX = (W - dw) / 2, baseY = (H - dh) / 2;
     const maxX = (dw - W) / 2, maxY = (dh - H) / 2;
     dx = Math.max(-maxX, Math.min(maxX, dx || 0));
@@ -52,6 +54,7 @@ window.App = window.App || {};
     ctx.save();
     if (filterDef && filterDef.filter) ctx.filter = filterDef.filter;
     ctx.drawImage(img, baseX + dx, baseY + dy, dw, dh);
+    ctx.filter = 'none';
     ctx.restore();
 
     // 滤镜强度 < 1：叠加未滤镜原图降低强度
@@ -88,7 +91,7 @@ window.App = window.App || {};
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
     }
-    return { dx, dy };
+    return { dx, dy, scale: userScale };
   };
 
   /* 缩略图绘制：把 source(用户照片 或 样本图) 以某滤镜画进小 canvas（供滤镜选择条预览） */
@@ -159,7 +162,7 @@ window.App = window.App || {};
      developT: 0(全白空白)→1(完全显影)。返回 {dx,dy}（已夹紧）。
      做法：目标滤镜字符串 + 随显影进度衰减的附加项（过曝/模糊/低对比），
            最上层再叠一层从纯白衰减的白色遮罩，模拟化学显影由白浮现。 */
-  App.drawCellDevelop = function (canvas, img, dx, dy, filterDef, intensity, developT) {
+  App.drawCellDevelop = function (canvas, img, dx, dy, filterDef, intensity, developT, scale) {
     const ctx = canvas.getContext('2d');
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -168,11 +171,13 @@ window.App = window.App || {};
     if (canvas.width !== W) canvas.width = W;
     if (canvas.height !== H) canvas.height = H;
     ctx.clearRect(0, 0, W, H);
-    if (!img || !img.complete || !img.naturalWidth) return { dx: dx || 0, dy: dy || 0 };
+    if (!img || !img.complete || !img.naturalWidth) return { dx: dx || 0, dy: dy || 0, scale: scale || 1 };
 
     intensity = intensity == null ? 1 : intensity;
-    const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight); // cover
-    const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+    const userScale = Math.max(1, scale || 1);
+    const coverScale = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+    const s0 = coverScale * userScale;
+    const dw = img.naturalWidth * s0, dh = img.naturalHeight * s0;
     const baseX = (W - dw) / 2, baseY = (H - dh) / 2;
     const maxX = (dw - W) / 2, maxY = (dh - H) / 2;
     dx = Math.max(-maxX, Math.min(maxX, dx || 0));
@@ -188,6 +193,7 @@ window.App = window.App || {};
     ctx.save();
     if (filterStr) ctx.filter = filterStr;
     ctx.drawImage(img, baseX + dx, baseY + dy, dw, dh);
+    ctx.filter = 'none';
     ctx.restore();
 
     if (intensity < 1) {
@@ -214,7 +220,7 @@ window.App = window.App || {};
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
     }
-    return { dx, dy };
+    return { dx, dy, scale: userScale };
   };
 
   /* 把单格照片绘制进指定 ctx 区域（供整图导出复用，不依赖 DOM rect） */
@@ -222,8 +228,10 @@ window.App = window.App || {};
     ctx.save();
     ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
     if (img && img.complete && img.naturalWidth) {
-      const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-      const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+      const userScale = Math.max(1, img._scale || 1);
+      const coverScale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+      const s = coverScale * userScale;
+      const dw = img.naturalWidth * s, dh = img.naturalHeight * s;
       const baseX = x + (w - dw) / 2, baseY = y + (h - dh) / 2;
       const maxX = (dw - w) / 2, maxY = (dh - h) / 2;
       let dx = Math.max(-maxX, Math.min(maxX, img._dx || 0));
@@ -255,48 +263,79 @@ window.App = window.App || {};
     const type = App.state.type, spec = App.PAPER_SPECS[type];
     const scale = scaleOverride || App.EXPORT.scale;
     const BASE = 1024;                                  // wide 基准宽(1x)
-    const W = Math.round(BASE * (spec.w / 108) * scale);
-    const H = Math.round(W * (spec.h / spec.w));
+    const pW = Math.round(BASE * (spec.w / 108) * scale);   // 相纸宽（不含外边框）
+    const pH = Math.round(pW * (spec.h / spec.w));          // 相纸高
+    const PAD = Math.round(2 * scale);                      // 外边框 2 logical px
+    const W = pW + PAD * 2, H = pH + PAD * 2;
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const ctx = c.getContext('2d');
 
+    // 外层 2px 边框（让拍立得外边缘更清晰）
+    ctx.fillStyle = '#EBEBEB';
+    ctx.fillRect(0, 0, W, H);
+
     // 白纸底
     ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(PAD, PAD, pW, pH);
+
+    // 相纸立体纹理：高光 + 阴影 + 极淡颗粒
+    const hi = ctx.createLinearGradient(PAD, PAD, PAD + pW, PAD + pH);
+    hi.addColorStop(0, 'rgba(255,255,255,.55)');
+    hi.addColorStop(.4, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hi; ctx.fillRect(PAD, PAD, pW, pH);
+    const sh = ctx.createLinearGradient(PAD, PAD, PAD + pW, PAD + pH);
+    sh.addColorStop(.55, 'rgba(0,0,0,0)');
+    sh.addColorStop(1, 'rgba(0,0,0,.035)');
+    ctx.fillStyle = sh; ctx.fillRect(PAD, PAD, pW, pH);
+    // 细颗粒
+    const n = App.getNoise();
+    ctx.save();
+    ctx.globalAlpha = .035;
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = ctx.createPattern(n, 'repeat');
+    ctx.fillRect(PAD, PAD, pW, pH);
+    ctx.restore();
 
     // 成像区
     const r = App.imageAreaRatio(type);
-    const ix = Math.round(r.x * W), iy = Math.round(r.y * H);
-    const iw = Math.round(r.w * W), ih = Math.round(r.h * H);
+    const ix = PAD + Math.round(r.x * pW), iy = PAD + Math.round(r.y * pH);
+    const iw = Math.round(r.w * pW), ih = Math.round(r.h * pH);
     ctx.fillStyle = '#111'; ctx.fillRect(ix, iy, iw, ih);
 
     // 网格切分（1 / 4 / 9）
-    const n = App.state.mode;
-    const cols = n === 4 ? 2 : (n === 9 ? 3 : 1);
+    const nCell = App.state.mode;
+    const cols = nCell === 4 ? 2 : (nCell === 9 ? 3 : 1);
     const rows = cols;
-    const gap = Math.round(W * 0.005);
+    const gap = Math.round(pW * 0.005);
     const cw = (iw - gap * (cols - 1)) / cols;
     const ch = (ih - gap * (rows - 1)) / rows;
 
     const fd = App.getFilter(App.state.filterId);
     const intensity = App.state.filterIntensity;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < nCell; i++) {
       const p = App.state.photos[i];
       const cx = ix + (i % cols) * (cw + gap);
       const cy = iy + Math.floor(i / cols) * (ch + gap);
       const img = p && p.img;
-      if (img) { img._dx = p.dx || 0; img._dy = p.dy || 0; }
+      if (img) { img._dx = p.dx || 0; img._dy = p.dy || 0; img._scale = Math.max(1, p.scale || 1); }
       drawCellInto(ctx, img, cx, cy, Math.round(cw), Math.round(ch), fd, intensity);
     }
+
+    // 成像区与白纸之间极细压痕线（真实照片边缘感）
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,0,0,.10)';
+    ctx.lineWidth = Math.max(1, scale);
+    ctx.strokeRect(ix - ctx.lineWidth / 2, iy - ctx.lineWidth / 2, iw + ctx.lineWidth, ih + ctx.lineWidth);
+    ctx.restore();
 
     // 日期戳（底部白边中央，等宽体还原拍立得日期）
     const d = new Date();
     const cap = d.getFullYear() + ' · ' + String(d.getMonth() + 1).padStart(2, '0');
     ctx.fillStyle = '#8d877b';
-    ctx.font = Math.round(W * 0.025) + 'px ui-monospace, "SF Mono", Menlo, monospace';
+    ctx.font = Math.round(pW * 0.025) + 'px ui-monospace, "SF Mono", Menlo, monospace';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(cap, W / 2, H - Math.round(spec.borders.bottom / spec.h * H * 0.5));
+    ctx.fillText(cap, PAD + pW / 2, PAD + pH - Math.round(spec.borders.bottom / spec.h * pH * 0.5));
 
     return c;
   };

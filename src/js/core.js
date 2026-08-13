@@ -9,7 +9,8 @@ window.App = window.App || {};
   /* —— 相纸规格：真实 instax 毫米比例 ——
      borders: 上 / 左右 / 下 白边（mm） */
   App.PAPER_SPECS = {
-    mini: { name: 'mini 系列', w: 54,  h: 86, borders: { top: 2,   side: 2.5, bottom: 22 } },
+    // mini 调整为真实 instax mini 比例：成像区 46×62mm，下留白 18mm（参考实拍图）
+    mini: { name: 'mini 系列', w: 54,  h: 86, borders: { top: 6,   side: 4,   bottom: 18 } },
     sq:   { name: 'sq 系列',   w: 72,  h: 86, borders: { top: 5,   side: 5,   bottom: 19 } },
     wide: { name: 'wide 系列', w: 108, h: 86, borders: { top: 2,   side: 4.5, bottom: 22 } }
   };
@@ -29,12 +30,12 @@ window.App = window.App || {};
   /* —— 滤镜预设：instax / 富士感（参数化，供 Canvas 管线复用）——
      filter: ctx.filter 字符串；grain 颗粒强度 0~1；vignette 暗角 0~1 */
   App.FILTERS = [
-    { id: 'standard', name: '标准', filter: 'sepia(.18) saturate(1.05) contrast(1.05) brightness(1.02)', grain: .08, vignette: .16 },
-    { id: 'vivid',    name: '鲜艳', filter: 'saturate(1.28) contrast(1.16) brightness(1.03)',           grain: .07, vignette: .18 },
-    { id: 'mono',     name: '单色', filter: 'grayscale(1) contrast(1.18) brightness(1.02)',             grain: .10, vignette: .20 },
-    { id: 'faded',    name: '褪色', filter: 'sepia(.10) saturate(.85) contrast(.92) brightness(1.07)', grain: .06, vignette: .14 },
-    { id: 'teal',     name: '青影', filter: 'sepia(.22) hue-rotate(-16deg) saturate(1.05) contrast(1.05)', grain: .08, vignette: .18 },
-    { id: 'warm',     name: '暖阳', filter: 'sepia(.32) saturate(1.10) contrast(1.02) brightness(1.04)', grain: .07, vignette: .17 }
+    { id: 'standard', name: '标准', filter: 'sepia(.22) saturate(1.14) contrast(1.10) brightness(1.02)', grain: .09, vignette: .18 },
+    { id: 'vivid',    name: '鲜艳', filter: 'saturate(1.45) contrast(1.20) brightness(1.03)',            grain: .08, vignette: .20 },
+    { id: 'mono',     name: '单色', filter: 'grayscale(1) contrast(1.28) brightness(1.03)',              grain: .12, vignette: .22 },
+    { id: 'faded',    name: '褪色', filter: 'sepia(.14) saturate(.78) contrast(.90) brightness(1.10)',  grain: .07, vignette: .15 },
+    { id: 'teal',     name: '青影', filter: 'sepia(.18) hue-rotate(-22deg) saturate(1.10) contrast(1.08)', grain: .09, vignette: .20 },
+    { id: 'warm',     name: '暖阳', filter: 'sepia(.38) saturate(1.20) contrast(1.06) brightness(1.04)', grain: .08, vignette: .18 }
   ];
 
   App.getFilter = function (id) {

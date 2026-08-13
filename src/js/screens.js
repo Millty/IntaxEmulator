@@ -86,11 +86,11 @@
     if (!hint) return;
     if (App.state.mode === 1) {
       const filled = hasPhoto(0);
-      hint.textContent = filled ? '可拖拽调整取景' : '点击相纸中央选择照片';
+      hint.textContent = filled ? '拖拽移动 · 双指/滚轮缩放 · 点相纸可替换' : '点击相纸中央选择照片';
       return;
     }
     const empty = App.state.photos.filter(p => !(p && p.img)).length;
-    if (empty === 0) hint.textContent = '已选满 ' + App.state.mode + ' 张 · 点格子可替换';
+    if (empty === 0) hint.textContent = '已选满 ' + App.state.mode + ' 张 · 拖拽/双指缩放 · 点格子可替换';
     else hint.textContent = '点击每个空白格子上传照片（还需 ' + empty + ' 张）';
   }
 
@@ -109,8 +109,8 @@
     if (p && p.img) {
       empty.style.display = 'none';
       const fd = App.getFilter(App.state.filterId);
-      const res = App.drawPhoto(canvas, p.img, p.dx, p.dy, fd, App.state.filterIntensity);
-      p.dx = res.dx; p.dy = res.dy;
+      const res = App.drawPhoto(canvas, p.img, p.dx, p.dy, fd, App.state.filterIntensity, p.scale);
+      p.dx = res.dx; p.dy = res.dy; p.scale = res.scale;
     } else {
       empty.style.display = 'grid';
       const ctx = canvas.getContext('2d');
@@ -118,25 +118,75 @@
     }
   }
 
-  /* 拖拽取景：平移夹紧在 cover 余量内，不露白边 */
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  /* 拖拽 + 双指缩放取景：平移夹紧在 cover 余量内，缩放限制 ≥1 避免露白边 */
   function attachDrag(cell, i) {
-    let sx, sy, bdx, bdy;
+    const pointers = new Map();
+    let pinch = { active: false, startDist: 0, startScale: 1 };
+    let drag = { sx: 0, sy: 0, bdx: 0, bdy: 0 };
+
     cell.addEventListener('pointerdown', (e) => {
       const p = App.state.photos[i];
       if (!p || !p.img) return;
-      sx = e.clientX; sy = e.clientY; bdx = p.dx || 0; bdy = p.dy || 0;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       cell.setPointerCapture(e.pointerId);
+      if (pointers.size === 1) {
+        drag = { sx: e.clientX, sy: e.clientY, bdx: p.dx || 0, bdy: p.dy || 0 };
+      } else if (pointers.size === 2) {
+        const pts = Array.from(pointers.values());
+        pinch.startDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        pinch.startScale = Math.max(1, p.scale || 1);
+        pinch.active = true;
+      }
     });
+
     cell.addEventListener('pointermove', (e) => {
       const p = App.state.photos[i];
-      if (!p || !p.img) return;
-      const dpr = window.devicePixelRatio || 1;
-      p.dx = bdx + (e.clientX - sx) * dpr;
-      p.dy = bdy + (e.clientY - sy) * dpr;
-      renderCell(i);
+      if (!p || !p.img || !pointers.has(e.pointerId)) return;
+      const rec = pointers.get(e.pointerId);
+      rec.x = e.clientX; rec.y = e.clientY;
+
+      if (pinch.active && pointers.size === 2) {
+        const pts = Array.from(pointers.values());
+        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        if (pinch.startDist > 0) {
+          p.scale = clamp(pinch.startScale * (dist / pinch.startDist), 1, 4);
+          renderCell(i);
+        }
+      } else if (pointers.size === 1) {
+        const dpr = window.devicePixelRatio || 1;
+        p.dx = drag.bdx + (e.clientX - drag.sx) * dpr;
+        p.dy = drag.bdy + (e.clientY - drag.sy) * dpr;
+        renderCell(i);
+      }
     });
-    cell.addEventListener('pointerup', (e) => {
+
+    const end = (e) => {
+      pointers.delete(e.pointerId);
       try { cell.releasePointerCapture(e.pointerId); } catch (_) {}
+      if (pointers.size < 2) pinch.active = false;
+      if (pointers.size === 0) drag = { sx: 0, sy: 0, bdx: 0, bdy: 0 };
+    };
+    cell.addEventListener('pointerup', end);
+    cell.addEventListener('pointercancel', end);
+
+    // 桌面端滚轮缩放
+    cell.addEventListener('wheel', (e) => {
+      const p = App.state.photos[i];
+      if (!p || !p.img) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.92 : 1.08;
+      p.scale = clamp((p.scale || 1) * delta, 1, 4);
+      renderCell(i);
+    }, { passive: false });
+
+    // 双击重置取景
+    cell.addEventListener('dblclick', () => {
+      const p = App.state.photos[i];
+      if (!p || !p.img) return;
+      p.dx = 0; p.dy = 0; p.scale = 1;
+      renderCell(i);
     });
   }
 
@@ -157,7 +207,7 @@
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        App.state.photos[idx] = { src: reader.result, img, dx: 0, dy: 0 };
+        App.state.photos[idx] = { src: reader.result, img, dx: 0, dy: 0, scale: 1 };
         renderCell(idx);
         updateHint();
         if (App.stack[App.stack.length - 1] === 'editor') refreshThumbs();
@@ -271,8 +321,8 @@
       for (let i = 0; i < n; i++) {
         const p = App.state.photos[i];
         if (p && p.img) {
-          const res = App.drawCellDevelop(cells[i], p.img, p.dx, p.dy, fd, intensity, devT);
-          p.dx = res.dx; p.dy = res.dy;
+          const res = App.drawCellDevelop(cells[i], p.img, p.dx, p.dy, fd, intensity, devT, p.scale);
+          p.dx = res.dx; p.dy = res.dy; p.scale = res.scale;
         }
       }
       if (t < EJECT + DEV) { _devRaf = requestAnimationFrame(frame); }
