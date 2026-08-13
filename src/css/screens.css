@@ -1,0 +1,97 @@
+/* ============================================================
+   screens.css — 各屏幕布局
+   拍立得模拟器 · 阶段三 Round 1
+   ============================================================ */
+
+/* —— ① 主页 —— */
+.home { align-items: center; text-align: center; padding: 0 28px; }
+
+.hero { margin-top: clamp(28px, 9vh, 72px); }
+.hero-title {
+  margin: 0; font-size: clamp(30px, 9vw, 40px); font-weight: 700;
+  letter-spacing: -.5px; line-height: 1.1;
+}
+.hero-title span { color: var(--accent); }
+.hero-sub {
+  margin: 12px 0 0; font-size: 15px; color: var(--label-2); font-weight: 500;
+}
+
+.home-preview {
+  flex: 1; display: grid; place-items: center; width: 100%;
+}
+.home-preview .paper-thumb {
+  width: clamp(150px, 46vw, 200px);
+  transform: rotate(-3deg);
+  transition: transform .5s var(--ease);
+}
+.home-preview .paper-thumb .pt-image {
+  background: linear-gradient(155deg, #F7C59F, #E8825E 50%, #C25B9A);
+}
+.home-preview .paper-thumb .pt-caption { color: var(--label-2); }
+
+.home-hint, .home-preview { animation: floaty 4s ease-in-out infinite; }
+.home-preview { animation: floaty 5s ease-in-out infinite; }
+@keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+/* 仅让预览浮动，提示文字不参与旋转 */
+.home-hint { animation: none; margin: 0 0 calc(120px + env(safe-area-inset-bottom,0px)); font-size: 13px; color: var(--label-3); }
+
+/* —— ② 选相纸 —— */
+.select { background: var(--bg); }
+.select-body {
+  flex: 1; overflow-y: auto;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 20px 18px; gap: 22px;
+}
+.section-label {
+  margin: 0; font-size: 13px; font-weight: 600; color: var(--label-2);
+  text-transform: none; letter-spacing: .02em; padding-left: 4px;
+}
+
+.type-cards { display: flex; flex-direction: column; gap: 12px; }
+.type-card {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--card);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  transition: border-color .2s, transform .1s, box-shadow .2s;
+  position: relative;
+}
+.type-card:active { transform: scale(.985); }
+.type-card.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 6px 16px -6px rgba(0,122,255,.35);
+}
+.tc-thumb { flex: none; width: 48px; display: grid; place-items: center; }
+.tc-meta { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.tc-meta b { font-size: 16px; font-weight: 600; }
+.tc-meta i { font-size: 12.5px; color: var(--label-2); font-style: normal; }
+.tc-check {
+  flex: none; width: 24px; height: 24px; border-radius: 50%;
+  border: 1.5px solid var(--label-3);
+  display: grid; place-items: center; color: #fff;
+  transition: background .2s, border-color .2s;
+}
+.tc-check svg { width: 16px; height: 16px; opacity: 0; transition: opacity .15s; }
+.type-card.sel .tc-check { background: var(--accent); border-color: var(--accent); }
+.type-card.sel .tc-check svg { opacity: 1; }
+
+/* sq 排版分段 */
+.seg-field { display: flex; flex-direction: column; gap: 10px; }
+.seg-label { font-size: 13px; font-weight: 600; color: var(--label-2); padding-left: 4px; }
+.seg-field[hidden] { display: none; }
+
+/* —— 占位屏（下轮实现） —— */
+.placeholder { background: var(--bg); }
+.ph-body {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; text-align: center; gap: 10px; padding: 0 32px;
+}
+.ph-icon { font-size: 56px; margin-bottom: 6px; filter: saturate(.9); }
+.ph-body h2 { margin: 0; font-size: 22px; font-weight: 700; }
+.ph-body p { margin: 0; font-size: 15px; color: var(--label-2); line-height: 1.6; }
+.ph-meta { margin-top: 14px; font-size: 12.5px; color: var(--label-3);
+  font-family: ui-monospace, "SF Mono", monospace; letter-spacing: .02em; }

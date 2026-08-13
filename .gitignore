@@ -1,0 +1,22 @@
+# 依赖 / 构建产物
+node_modules/
+dist/
+build/
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器 / 本地配置
+.vscode/
+.idea/
+*.swp
+
+# 原型占位（非正式产物）
+prototype.html
+资产/
+
+# WorkBuddy 内部
+.workbuddy/

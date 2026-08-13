@@ -1,0 +1,260 @@
+/* ============================================================
+   system.css — iOS 原生设计系统（设计 token / 基础组件）
+   拍立得模拟器 · 阶段三 Round 1
+   ============================================================ */
+
+:root {
+  /* 配色：iOS 系统灰 + 系统蓝强调 */
+  --bg:           #F2F2F7;   /* systemGroupedBackground */
+  --bg-elevated:  #FFFFFF;   /* 卡片 / 导航毛玻璃底 */
+  --card:         #FFFFFF;
+  --sep:          rgba(60, 60, 67, 0.29);   /* hairline separator */
+  --label:        #1C1C1E;
+  --label-2:      #8E8E93;   /* secondary label */
+  --label-3:      #C7C7CC;
+  --accent:       #007AFF;   /* systemBlue */
+  --accent-press: #0062CC;
+  --green:        #34C759;
+  --radius:       14px;
+  --radius-lg:    20px;
+
+  /* 尺寸 */
+  --sb-h:   44px;   /* 状态栏 */
+  --nav-h:  44px;   /* 导航栏 */
+  --ease:   cubic-bezier(.32, .72, 0, 1);   /* iOS 推送缓动 */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+          "PingFang SC", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+  font-family: var(--font);
+  color: var(--label);
+  background: #D1D1D6;            /* 桌面端设备外底色 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#app {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  height: 100dvh;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 桌面端模拟设备外壳 */
+@media (min-width: 480px) {
+  body { padding: 24px 0; }
+  #app {
+    height: min(880px, 92vh);
+    border-radius: 46px;
+    border: 11px solid #1c1c1e;
+    box-shadow: 0 40px 90px -24px rgba(0, 0, 0, .5);
+  }
+}
+
+/* —— 状态栏 —— */
+.statusbar {
+  flex: none;
+  height: var(--sb-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 26px;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: .2px;
+  color: var(--label);
+  z-index: 50;
+  position: relative;
+}
+.sb-time { font-variant-numeric: tabular-nums; }
+.sb-icons { display: inline-flex; align-items: center; gap: 6px; }
+.sb-signal, .sb-wifi, .sb-battery {
+  display: inline-block; background: var(--label); border-radius: 1px;
+}
+.sb-signal { width: 17px; height: 11px;
+  -webkit-mask: linear-gradient(#000 0 0) 0 100%/100% 100% no-repeat,
+               linear-gradient(#000 0 0) 0 100%/100% 100% no-repeat;
+  clip-path: polygon(0 100%, 22% 100%, 22% 55%, 40% 55%, 40% 100%, 62% 100%, 62% 30%, 80% 30%, 80% 100%, 100% 100%, 100% 0, 0 0);
+}
+.sb-wifi { width: 16px; height: 11px; border-radius: 2px;
+  -webkit-mask: radial-gradient(circle at 50% 100%, #000 38%, transparent 40%) 50% 100%/16px 16px no-repeat;
+  background: var(--label); }
+.sb-battery { width: 24px; height: 12px; border-radius: 3px; position: relative;
+  background: transparent; box-shadow: inset 0 0 0 1.4px var(--label); }
+.sb-battery::before { content: ""; position: absolute; inset: 2px; right: 4px;
+  background: var(--label); border-radius: 1px; }
+.sb-battery::after { content: ""; position: absolute; right: -3px; top: 3px;
+  width: 2px; height: 6px; background: var(--label); border-radius: 0 1px 1px 0; opacity: .5; }
+
+/* —— 屏幕容器与转场 —— */
+.stage { position: relative; flex: 1; overflow: hidden; }
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform .46s var(--ease), visibility .46s var(--ease);
+  will-change: transform;
+}
+.screen.active { transform: translateX(0); visibility: visible; }
+.screen.from-right { transform: translateX(100%); }
+
+.screen-inner { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+/* —— 导航栏（毛玻璃） —— */
+.navbar {
+  flex: none;
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  position: relative;
+  background: rgba(249, 249, 249, .82);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: .5px solid var(--sep);
+  z-index: 10;
+}
+.nav-back {
+  width: 44px; height: 44px; border: 0; background: none;
+  color: var(--accent); display: grid; place-items: center; cursor: pointer;
+  flex: none; transition: opacity .15s, transform .15s;
+}
+.nav-back svg { width: 24px; height: 24px; }
+.nav-back:active { opacity: .45; }
+.nav-title {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  font-size: 17px; font-weight: 600; color: var(--label);
+  pointer-events: none;
+}
+.nav-right { width: 44px; flex: none; }
+@media (prefers-color-scheme: dark) {
+  .navbar { background: rgba(30, 30, 32, .82); border-bottom-color: rgba(255,255,255,.16); }
+}
+
+/* —— 分段控件（UISegmentedControl） —— */
+.segmented {
+  display: flex;
+  background: #E4E4EA;
+  border-radius: 9px;
+  padding: 2px;
+  position: relative;
+}
+.segmented button {
+  flex: 1;
+  border: 0; background: none;
+  font-size: 14px; font-weight: 600; color: var(--label);
+  padding: 7px 0; border-radius: 7px; cursor: pointer;
+  position: relative; z-index: 1;
+  transition: color .2s;
+}
+.segmented button.sel { color: var(--label); }
+.segmented::before {
+  content: ""; position: absolute; top: 2px; bottom: 2px; left: 2px;
+  width: calc((100% - 4px) / 3);
+  background: #fff; border-radius: 7px;
+  box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08);
+  transform: translateX(calc(var(--seg, 0) * 100%));
+  transition: transform .28s var(--ease);
+  z-index: 0;
+}
+.segmented button.sel { color: #000; }
+
+/* —— 主按钮 —— */
+.btn-primary {
+  width: 100%;
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  font-size: 17px; font-weight: 600;
+  padding: 14px 0;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+.btn-primary:active { background: var(--accent-press); transform: scale(.985); }
+
+.tabbar-safe {
+  flex: none;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg);
+  border-top: .5px solid var(--sep);
+}
+
+/* —— 浮动 + 按钮 —— */
+.fab {
+  position: absolute;
+  left: 50%; bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: 64px; height: 64px; border-radius: 50%;
+  border: 0; background: var(--accent); color: #fff;
+  display: grid; place-items: center;
+  box-shadow: 0 12px 28px -6px rgba(0,122,255,.6), 0 4px 10px rgba(0,0,0,.18);
+  cursor: pointer;
+  transition: transform .18s var(--ease), background .15s;
+  z-index: 5;
+}
+.fab svg { width: 30px; height: 30px; transition: transform .3s var(--ease); }
+.fab:active { background: var(--accent-press); transform: translateX(-50%) scale(.92); }
+.fab:active svg { transform: rotate(90deg); }
+
+/* —— 相纸缩略（真实 instax 比例） —— */
+.paper-thumb {
+  position: relative;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 10px 26px -10px rgba(0,0,0,.35), 0 3px 8px rgba(0,0,0,.12);
+  overflow: hidden;
+}
+.paper-thumb .pt-image {
+  position: absolute;
+  background: linear-gradient(155deg, #F2B07C, #D9694E 55%, #B14B8E);
+}
+.paper-thumb .pt-caption {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  text-align: center; color: var(--label-2);
+  font: 600 10px/1 ui-monospace, "SF Mono", monospace;
+  letter-spacing: .12em; padding-bottom: 7px;
+}
+.paper-thumb.mini  { aspect-ratio: 54 / 86; }
+.paper-thumb.sq    { aspect-ratio: 72 / 86; }
+.paper-thumb.wide  { aspect-ratio: 108 / 86; }
+.paper-thumb.mini .pt-image  { left: 4.6%; top: 2.3%; right: 4.6%; bottom: 25.6%; }
+.paper-thumb.sq   .pt-image  { left: 6.9%; top: 5.8%; right: 6.9%; bottom: 22.1%; }
+.paper-thumb.wide .pt-image  { left: 4.2%; top: 2.3%; right: 4.2%; bottom: 25.6%; }
+
+/* 选相纸卡片里的相纸缩略 */
+.tc-paper {
+  display: block;
+  background: #fff;
+  border-radius: 6px;
+  position: relative;
+  box-shadow: inset 0 0 0 .5px var(--sep), 0 2px 6px rgba(0,0,0,.12);
+}
+.tc-paper::before {
+  content: ""; position: absolute;
+  background: linear-gradient(155deg, #F2B07C, #D9694E 55%, #B14B8E);
+  border-radius: 1px;
+}
+.tc-paper.mini  { width: 30px; aspect-ratio: 54 / 86; }
+.tc-paper.sq    { width: 38px; aspect-ratio: 72 / 86; }
+.tc-paper.wide  { width: 46px; aspect-ratio: 108 / 86; }
+.tc-paper.mini::before  { left: 9%; top: 7%; right: 9%; bottom: 26%; }
+.tc-paper.sq::before    { left: 13%; top: 12%; right: 13%; bottom: 22%; }
+.tc-paper.wide::before  { left: 7%; top: 10%; right: 7%; bottom: 26%; }

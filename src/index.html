@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#F2F2F7" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>拍立得模拟器</title>
+  <link rel="stylesheet" href="css/system.css" />
+  <link rel="stylesheet" href="css/screens.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 全局状态栏 -->
+    <div class="statusbar">
+      <span class="sb-time" id="sbTime">9:41</span>
+      <span class="sb-icons">
+        <span class="sb-signal" aria-hidden="true"></span>
+        <span class="sb-wifi" aria-hidden="true"></span>
+        <span class="sb-battery" aria-hidden="true"></span>
+      </span>
+    </div>
+
+    <!-- 屏幕容器 -->
+    <main class="stage">
+      <!-- ① 主页 -->
+      <section class="screen active" id="screen-home">
+        <div class="screen-inner home">
+          <header class="hero">
+            <h1 class="hero-title">拍立得<span>模拟器</span></h1>
+            <p class="hero-sub">把数码照片，变成会显影的即时相片</p>
+          </header>
+          <div class="home-preview">
+            <div class="paper-thumb sq" id="homePreview">
+              <span class="pt-image"></span>
+              <span class="pt-caption">2026 · 08</span>
+            </div>
+          </div>
+          <button class="fab" id="btnAdd" aria-label="添加照片">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <p class="home-hint">点击 + 开始制作</p>
+        </div>
+      </section>
+
+      <!-- ② 选相纸 -->
+      <section class="screen" id="screen-select">
+        <div class="screen-inner select">
+          <nav class="navbar">
+            <button class="nav-back" data-back aria-label="返回">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+            </button>
+            <span class="nav-title">选择相纸</span>
+            <span class="nav-right"></span>
+          </nav>
+
+          <div class="select-body">
+            <p class="section-label">相纸规格</p>
+            <div class="type-cards" id="typeCards">
+              <button class="type-card" data-type="mini">
+                <span class="tc-thumb"><span class="tc-paper mini"></span></span>
+                <span class="tc-meta"><b>mini 系列</b><i>竖版小卡 · 54 × 86mm</i></span>
+                <span class="tc-check">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+                </span>
+              </button>
+              <button class="type-card" data-type="sq">
+                <span class="tc-thumb"><span class="tc-paper sq"></span></span>
+                <span class="tc-meta"><b>sq 系列</b><i>方形 · 72 × 86mm</i></span>
+                <span class="tc-check">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+                </span>
+              </button>
+              <button class="type-card" data-type="wide">
+                <span class="tc-thumb"><span class="tc-paper wide"></span></span>
+                <span class="tc-meta"><b>wide 系列</b><i>横版宽幅 · 108 × 86mm</i></span>
+                <span class="tc-check">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+                </span>
+              </button>
+            </div>
+
+            <div class="seg-field" id="modeField" hidden>
+              <label class="seg-label">sq 排版</label>
+              <div class="segmented" id="modeSeg" role="tablist">
+                <button data-mode="1" class="sel">1 张</button>
+                <button data-mode="4">4 张</button>
+                <button data-mode="9">9 张</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tabbar-safe">
+            <button class="btn-primary" id="btnNext">下一步 · 选照片</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ③ 编辑（下轮实现，本轮回填占位） -->
+      <section class="screen" id="screen-editor">
+        <div class="screen-inner placeholder">
+          <nav class="navbar">
+            <button class="nav-back" data-back aria-label="返回">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+            </button>
+            <span class="nav-title">编辑</span>
+            <span class="nav-right"></span>
+          </nav>
+          <div class="ph-body">
+            <div class="ph-icon">🖼️</div>
+            <h2>编辑页</h2>
+            <p>滤镜 · 拖拽取景 · 排版<br/>将在下一轮实现</p>
+            <p class="ph-meta" id="editorMeta"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ④ 显影（下轮实现） -->
+      <section class="screen" id="screen-develop">
+        <div class="screen-inner placeholder">
+          <nav class="navbar">
+            <button class="nav-back" data-back aria-label="返回">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+            </button>
+            <span class="nav-title">显影</span>
+            <span class="nav-right"></span>
+          </nav>
+          <div class="ph-body">
+            <div class="ph-icon">🎞️</div>
+            <h2>显影动画</h2>
+            <p>出片滑动 → 逐帧显影<br/>将在下一轮实现</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ⑤ 成片（下轮实现） -->
+      <section class="screen" id="screen-result">
+        <div class="screen-inner placeholder">
+          <nav class="navbar">
+            <button class="nav-back" data-back aria-label="返回">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+            </button>
+            <span class="nav-title">成片</span>
+            <span class="nav-right"></span>
+          </nav>
+          <div class="ph-body">
+            <div class="ph-icon">📷</div>
+            <h2>成片预览</h2>
+            <p>长按保存 · 3x PNG<br/>将在下一轮实现</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="js/core.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/screens.js"></script>
+</body>
+</html>
