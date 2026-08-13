@@ -27,23 +27,31 @@ window.App = window.App || {};
     };
   };
 
-  /* —— 滤镜预设：仿 instax 化学显影（参数化，供 Canvas 管线复用）——
-     filter : ctx.filter 字符串（曝光/对比/色温/饱和，现代浏览器生效）
-     tint   : 化学色偏叠加 {hi:亮部色, lo:暗部色, amt}（soft-light 混合，全浏览器生效，保证滤镜可辨）
+  /* —— 滤镜预设：仿 instax 化学显影（像素级调色，全浏览器一致）——
+     主调色不再依赖 ctx.filter（iOS Safari / WebView 支持不完整），
+     全部在 render.js 的 gradeImageData 中按像素计算。
+     grade 字段（按官方成像参数）：
+       exposure : 曝光补偿(+0.3~0.7EV) → 亮度乘子(如 .12 = ×1.12)
+       contrast : 对比度(+15~25%)      → 中灰对比强化
+       temp     : 色温(+400~800K 偏暖) → 正=暖(R↑B↓) / 负=冷
+       sat      : 饱和度(-10~20% 褪色) → 负=去饱和
+       hiWarm   : 亮部暖黄化学色偏
+       loTeal   : 暗部青/蓝化学色偏
+       lift     : 黑位抬升(褪色感)
      grain  : 颗粒强度(ISO800~1600 中等)；vignette : 暗角 */
   App.FILTERS = [
-    { id: 'standard', name: '标准', filter: 'sepia(.30) saturate(.88) contrast(1.20) brightness(1.12)',
-      tint: { hi: '#ffd9a0', lo: '#41607f', amt: .22 }, grain: .16, vignette: .20 },
-    { id: 'vivid',    name: '鲜艳', filter: 'saturate(1.18) contrast(1.28) brightness(1.08)',
-      tint: { hi: '#ffcf8f', lo: '#2e4a66', amt: .18 }, grain: .14, vignette: .22 },
-    { id: 'mono',     name: '单色', filter: 'grayscale(1) contrast(1.35) brightness(1.06)',
-      tint: null, grain: .20, vignette: .26 },
-    { id: 'faded',    name: '褪色', filter: 'sepia(.12) saturate(.72) contrast(.92) brightness(1.16)',
-      tint: { hi: '#fff0d0', lo: '#9fb6c4', amt: .12 }, grain: .12, vignette: .15 },
-    { id: 'teal',     name: '青影', filter: 'sepia(.20) hue-rotate(-16deg) saturate(.95) contrast(1.16) brightness(1.10)',
-      tint: { hi: '#bfeae0', lo: '#1f4a5a', amt: .24 }, grain: .16, vignette: .22 },
-    { id: 'warm',     name: '暖阳', filter: 'sepia(.42) saturate(1.10) contrast(1.14) brightness(1.14)',
-      tint: { hi: '#ffcf8a', lo: '#6a4a5a', amt: .30 }, grain: .15, vignette: .20 }
+    { id: 'standard', name: '标准', grain: .16, vignette: .20,
+      grade: { exposure: .10, contrast: .16, temp: .30, sat: -.08, hiWarm: .35, loTeal: .30 } },
+    { id: 'vivid',    name: '鲜艳', grain: .14, vignette: .22,
+      grade: { exposure: .12, contrast: .24, temp: .22, sat: .06, hiWarm: .28, loTeal: .24 } },
+    { id: 'mono',     name: '单色', grain: .20, vignette: .26,
+      grade: { exposure: .10, contrast: .28, temp: 0, sat: -1.0, hiWarm: .18, loTeal: .34 } },
+    { id: 'faded',    name: '褪色', grain: .12, vignette: .15,
+      grade: { exposure: .16, contrast: .08, temp: .20, sat: -.18, hiWarm: .40, loTeal: .18, lift: .14 } },
+    { id: 'teal',     name: '青影', grain: .16, vignette: .22,
+      grade: { exposure: .11, contrast: .18, temp: -.22, sat: -.10, hiWarm: .14, loTeal: .70 } },
+    { id: 'warm',     name: '暖阳', grain: .15, vignette: .20,
+      grade: { exposure: .13, contrast: .15, temp: .62, sat: -.05, hiWarm: .66, loTeal: .20 } }
   ];
 
   App.getFilter = function (id) {

@@ -1,7 +1,9 @@
 /* ============================================================
-   render.js — Canvas 渲染管线（滤镜 / 化学色偏 / 颗粒 / 暗角 / 显影 / 导出）
+   render.js — Canvas 渲染管线（像素级滤镜 / 化学色偏 / 颗粒 / 暗角 / 显影 / 导出）
    拍立得模拟器 · 阶段三
    原则：预览即导出（同一套绘制，导出仅放大倍率）
+   关键：主调色走像素级 getImageData（全浏览器一致），不依赖 ctx.filter
+        （iOS Safari / WebView 对 ctx.filter 支持不完整，会导致手机端滤镜很弱）
    ============================================================ */
 window.App = window.App || {};
 (function (App) {
@@ -37,24 +39,89 @@ window.App = window.App || {};
     ctx.closePath();
   }
 
-  /* 统一调色叠加：化学色偏(tint) + 颗粒 + 暗角 + 显影白遮罩
-     region(x,y,w,h)；whiteAmt: 0~1 显影白遮罩强度
-     tint 用 soft-light 混合，全浏览器生效——即使 ctx.filter 不被支持，滤镜切换仍明显可辨 */
-  App.applyOverlays = function (ctx, x, y, w, h, fd, intensity, whiteAmt) {
-    intensity = intensity == null ? 1 : intensity;
-    // 化学色偏：亮部暖黄 / 暗部青蓝
-    if (fd && fd.tint) {
-      const g = ctx.createLinearGradient(0, y, 0, y + h);
-      g.addColorStop(0, fd.tint.hi);
-      g.addColorStop(1, fd.tint.lo);
-      ctx.save();
-      ctx.globalCompositeOperation = 'soft-light';
-      ctx.globalAlpha = fd.tint.amt * intensity;
-      ctx.fillStyle = g;
-      ctx.fillRect(x, y, w, h);
-      ctx.restore();
+  /* —— 像素级调色：仿 instax 化学显影（全浏览器一致，替代 ctx.filter）——
+     data: Uint8ClampedArray(RGBA)；fd: 滤镜定义；intensity: 浓度(0~1) */
+  App.gradeImageData = function (data, fd, intensity) {
+    if (!fd || !fd.grade) return;
+    const g = fd.grade;
+    const k = (intensity == null) ? 1 : intensity;
+    const exposure = 1 + (g.exposure || 0) * k;     // 曝光补偿(亮度乘子)
+    const contrast = 1 + (g.contrast || 0) * k;     // 中灰对比强化
+    const temp    = (g.temp || 0) * k;              // 色温：正=暖 / 负=冷
+    const sat     = 1 + (g.sat || 0) * k;           // 饱和度：负=去饱和
+    const hiWarm  = (g.hiWarm || 0) * k;            // 亮部暖黄
+    const loTeal  = (g.loTeal || 0) * k;            // 暗部青蓝
+    const lift    = (g.lift || 0) * k;             // 黑位抬升(褪色)
+    const TEMP_R = 30, TEMP_B = 28;                 // 色温强度调参
+    const len = data.length;
+    for (let i = 0; i < len; i += 4) {
+      let r = data[i]     * exposure;
+      let gg = data[i + 1] * exposure;
+      let b = data[i + 2] * exposure;
+      // 黑位抬升（褪色感）：把暗部往浅灰拉
+      if (lift) {
+        r  = r  + lift * (235 - r);
+        gg = gg + lift * (235 - gg);
+        b  = b  + lift * (235 - b);
+      }
+      // 对比度（围绕中灰 128）
+      r  = (r  - 128) * contrast + 128;
+      gg = (gg - 128) * contrast + 128;
+      b  = (b  - 128) * contrast + 128;
+      // 色温：暖 = 加 R 减 B
+      r  += temp * TEMP_R;
+      gg += temp * 6;
+      b  -= temp * TEMP_B;
+      // 饱和度（去饱和向亮度灰靠拢）
+      let lum = 0.299 * r + 0.587 * gg + 0.114 * b;
+      r  = lum + (r  - lum) * sat;
+      gg = lum + (gg - lum) * sat;
+      b  = lum + (b  - lum) * sat;
+      // 亮度相关化学色偏：亮部暖黄 / 暗部青蓝
+      let L = 0.299 * r + 0.587 * gg + 0.114 * b;
+      let lum01 = L / 255;
+      let hw = hiWarm * lum01 * lum01;            // 越亮越强
+      r  += hw * 26; gg += hw * 12; b -= hw * 14;
+      let st = loTeal * (1 - lum01) * (1 - lum01); // 越暗越强
+      r  -= st * 16; gg += st * 10; b += st * 22;
+      // 夹紧
+      data[i]     = r  < 0 ? 0 : r  > 255 ? 255 : r;
+      data[i + 1] = gg < 0 ? 0 : gg > 255 ? 255 : gg;
+      data[i + 2] = b  < 0 ? 0 : b  > 255 ? 255 : b;
     }
-    // 胶片颗粒（overlay）
+  };
+
+  /* —— 分级源缓存：把原图按滤镜/浓度一次性像素调色，后续直接 drawImage 复用 ——
+     避免显影动画逐帧重复 getImageData；保证桌面/移动端完全一致 */
+  let _gidSeq = 0;
+  const _gradeCache = new Map();
+  function gradeKey(img, fd, intensity) {
+    if (!img._gid) img._gid = ++_gidSeq;
+    return img._gid + '|' + (fd ? fd.id : '') + '|' + (intensity == null ? 1 : intensity);
+  }
+  App.getGradedSource = function (img, fd, intensity) {
+    const sw = img && (img.naturalWidth || img.width);
+    const sh = img && (img.naturalHeight || img.height);
+    if (!sw || !sh) return null;
+    const key = gradeKey(img, fd, intensity);
+    const hit = _gradeCache.get(key);
+    if (hit) return hit;
+    const c = document.createElement('canvas');
+    c.width = sw; c.height = sh;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height);
+    App.gradeImageData(d.data, fd, intensity);
+    x.putImageData(d, 0, 0);
+    _gradeCache.set(key, c);
+    return c;
+  };
+
+  /* 统一叠加层：颗粒 + 暗角 + 显影白遮罩（均走合成混合，不依赖 ctx.filter）
+     region(x,y,w,h)；whiteAmt: 0~1 显影白遮罩强度 */
+  App.applyOverlays = function (ctx, x, y, w, h, fd, intensity, whiteAmt) {
+    intensity = (intensity == null) ? 1 : intensity;
+    // 胶片颗粒（overlay 混合）
     if (fd && fd.grain) {
       const n = App.getNoise();
       const pat = ctx.createPattern(n, 'repeat');
@@ -88,7 +155,7 @@ window.App = window.App || {};
     }
   };
 
-  /* 把照片绘制进 canvas：cover + 用户平移/缩放 + 滤镜 + 调色叠加
+  /* 把照片绘制进 canvas：cover + 用户平移/缩放 + 像素级滤镜 + 叠加层
      返回校正后的 {dx, dy, scale}（已按 cover 余量夹紧，避免露白边） */
   App.drawPhoto = function (canvas, img, dx, dy, filterDef, intensity, scale) {
     const ctx = canvas.getContext('2d');
@@ -99,24 +166,22 @@ window.App = window.App || {};
     if (canvas.width !== W) canvas.width = W;
     if (canvas.height !== H) canvas.height = H;
     ctx.clearRect(0, 0, W, H);
-
+    intensity = (intensity == null) ? 1 : intensity;
     if (!img || !img.complete || !img.naturalWidth) return { dx: dx || 0, dy: dy || 0, scale: scale || 1 };
 
-    intensity = intensity == null ? 1 : intensity;
-    const userScale = Math.max(1, scale || 1);               // ≥1 避免缩到比 cover 更小（露白）
-    const coverScale = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+    const userScale = Math.max(1, scale || 1);                 // ≥1 避免缩到比 cover 更小（露白）
+    const gs = App.getGradedSource(img, filterDef, intensity); // 像素级调色源
+    const srcW = gs ? gs.width : img.naturalWidth;
+    const srcH = gs ? gs.height : img.naturalHeight;
+    const coverScale = Math.max(W / srcW, H / srcH);
     const s = coverScale * userScale;
-    const dw = img.naturalWidth * s, dh = img.naturalHeight * s;
+    const dw = srcW * s, dh = srcH * s;
     const baseX = (W - dw) / 2, baseY = (H - dh) / 2;
     const maxX = (dw - W) / 2, maxY = (dh - H) / 2;
     dx = Math.max(-maxX, Math.min(maxX, dx || 0));
     dy = Math.max(-maxY, Math.min(maxY, dy || 0));
 
-    ctx.save();
-    if (filterDef && filterDef.filter) ctx.filter = filterDef.filter;
-    ctx.drawImage(img, baseX + dx, baseY + dy, dw, dh);
-    ctx.filter = 'none';
-    ctx.restore();
+    ctx.drawImage(gs || img, baseX + dx, baseY + dy, dw, dh);
 
     App.applyOverlays(ctx, 0, 0, W, H, filterDef, intensity, 0);
     return { dx, dy, scale: userScale };
@@ -131,17 +196,13 @@ window.App = window.App || {};
     const sw = source.naturalWidth || source.width;
     const sh = source.naturalHeight || source.height;
     if (!sw || !sh) return;
-    const sc = Math.max(W / sw, H / sh);            // cover
-    const dw = sw * sc, dh = sh * sc;
+    intensity = (intensity == null) ? 1 : intensity;
+    const gs = App.getGradedSource(source, filterDef, intensity);
+    const srcW = gs ? gs.width : sw, srcH = gs ? gs.height : sh;
+    const sc = Math.max(W / srcW, H / srcH);            // cover
+    const dw = srcW * sc, dh = srcH * sc;
     const dx = (W - dw) / 2, dy = (H - dh) / 2;
-    intensity = intensity == null ? 1 : intensity;
-
-    ctx.save();
-    if (filterDef && filterDef.filter) ctx.filter = filterDef.filter;
-    ctx.drawImage(source, dx, dy, dw, dh);
-    ctx.filter = 'none';
-    ctx.restore();
-
+    ctx.drawImage(gs || source, dx, dy, dw, dh);
     App.applyOverlays(ctx, 0, 0, W, H, filterDef, intensity, 0);
   };
 
@@ -167,8 +228,9 @@ window.App = window.App || {};
     return c;
   };
 
-  /* 显影绘制：目标滤镜 + 随进度衰减的过曝/模糊/低对比 + 白遮罩
-     developT: 0(全白空白)→1(完全显影)。返回 {dx,dy,scale}（已夹紧）。 */
+  /* 显影绘制：调色源 + 随进度衰减的过曝白遮罩（从纯白逐渐显影）
+     developT: 0(全白空白)→1(完全显影)。返回 {dx,dy,scale}（已夹紧）。
+     注：过曝/模糊改用白遮罩 + 透明度渐入实现（不依赖 ctx.filter，移动端一致） */
   App.drawCellDevelop = function (canvas, img, dx, dy, filterDef, intensity, developT, scale) {
     const ctx = canvas.getContext('2d');
     const rect = canvas.getBoundingClientRect();
@@ -178,35 +240,32 @@ window.App = window.App || {};
     if (canvas.width !== W) canvas.width = W;
     if (canvas.height !== H) canvas.height = H;
     ctx.clearRect(0, 0, W, H);
+    intensity = (intensity == null) ? 1 : intensity;
     if (!img || !img.complete || !img.naturalWidth) return { dx: dx || 0, dy: dy || 0, scale: scale || 1 };
 
-    intensity = intensity == null ? 1 : intensity;
     const userScale = Math.max(1, scale || 1);
-    const coverScale = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+    const gs = App.getGradedSource(img, filterDef, intensity);
+    const srcW = gs ? gs.width : img.naturalWidth;
+    const srcH = gs ? gs.height : img.naturalHeight;
+    const coverScale = Math.max(W / srcW, H / srcH);
     const s0 = coverScale * userScale;
-    const dw = img.naturalWidth * s0, dh = img.naturalHeight * s0;
+    const dw = srcW * s0, dh = srcH * s0;
     const baseX = (W - dw) / 2, baseY = (H - dh) / 2;
     const maxX = (dw - W) / 2, maxY = (dh - H) / 2;
     dx = Math.max(-maxX, Math.min(maxX, dx || 0));
     dy = Math.max(-maxY, Math.min(maxY, dy || 0));
 
-    const d = (developT == null) ? 0 : Math.max(0, Math.min(1, 1 - developT));
-    const sm = d * d * (3 - 2 * d);   // smoothstep 平滑显影
-
-    let filterStr = (filterDef && filterDef.filter) || '';
-    if (sm > 0.001) {
-      filterStr += ` brightness(${(1 + sm * 1.25).toFixed(3)}) contrast(${(1 - sm * 0.58).toFixed(3)}) saturate(${(1 - sm * 0.42).toFixed(3)}) blur(${(sm * 7).toFixed(2)}px)`;
-    }
+    const d = (developT == null) ? 0 : Math.max(0, Math.min(1, developT));
+    // 显影底色（偏暖白纸）
     ctx.save();
-    if (filterStr) ctx.filter = filterStr;
-    ctx.drawImage(img, baseX + dx, baseY + dy, dw, dh);
-    ctx.filter = 'none';
+    ctx.fillStyle = '#f7f4ee';
+    ctx.fillRect(0, 0, W, H);
     ctx.restore();
-
-    // 显影中颗粒更明显（不均匀显影感）
-    const grainAmt = filterDef && filterDef.grain ? filterDef.grain * (1 + sm * 0.8) : 0;
-    App.applyOverlays(ctx, 0, 0, W, H,
-      Object.assign({}, filterDef, { grain: grainAmt }), intensity, sm);
+    // 调色照片（后期用白遮罩控制显影程度）
+    ctx.drawImage(gs || img, baseX + dx, baseY + dy, dw, dh);
+    // 白遮罩：developT 越大越透明，照片从纯白浮现（模拟过曝/显影不均）
+    const whiteAmt = Math.max(0, 1 - d) * 0.92;
+    App.applyOverlays(ctx, 0, 0, W, H, filterDef, intensity, whiteAmt);
     return { dx, dy, scale: userScale };
   };
 
@@ -215,23 +274,26 @@ window.App = window.App || {};
     ctx.save();
     ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
     if (img && img.complete && img.naturalWidth) {
+      const gs = App.getGradedSource(img, fd, intensity);
+      const srcW = gs ? gs.width : img.naturalWidth;
+      const srcH = gs ? gs.height : img.naturalHeight;
       const userScale = Math.max(1, img._scale || 1);
-      const coverScale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+      const coverScale = Math.max(w / srcW, h / srcH);
       const s = coverScale * userScale;
-      const dw = img.naturalWidth * s, dh = img.naturalHeight * s;
+      const dw = srcW * s, dh = srcH * s;
       const baseX = x + (w - dw) / 2, baseY = y + (h - dh) / 2;
       const maxX = (dw - w) / 2, maxY = (dh - h) / 2;
       let dx = Math.max(-maxX, Math.min(maxX, img._dx || 0));
       let dy = Math.max(-maxY, Math.min(maxY, img._dy || 0));
-      ctx.save();
-      if (fd && fd.filter) ctx.filter = fd.filter;
-      ctx.drawImage(img, baseX + dx, baseY + dy, dw, dh);
-      ctx.filter = 'none';
-      ctx.restore();
-      App.applyOverlays(ctx, x, y, w, h, fd, intensity, 0);
+      ctx.drawImage(gs || img, baseX + dx, baseY + dy, dw, dh);
     } else {
       ctx.fillStyle = '#1a1a1a'; ctx.fillRect(x, y, w, h);
     }
+    ctx.restore();
+    // 叠加颗粒/暗角（限制在格内）
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    App.applyOverlays(ctx, x, y, w, h, fd, intensity, 0);
     ctx.restore();
   }
 
