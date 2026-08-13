@@ -97,23 +97,34 @@
         </div>
       </section>
 
-      <!-- ③ 编辑（下轮实现，本轮回填占位） -->
+      <!-- ③ 编辑：上传 + 居中相纸 + 每格拖拽取景 + 滤镜实时预览 -->
       <section class="screen" id="screen-editor">
-        <div class="screen-inner placeholder">
+        <div class="screen-inner editor">
           <nav class="navbar">
             <button class="nav-back" data-back aria-label="返回">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
             </button>
             <span class="nav-title">编辑</span>
-            <span class="nav-right"></span>
+            <button class="nav-right nav-upload" id="btnUpload" aria-label="上传照片">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/></svg>
+            </button>
           </nav>
-          <div class="ph-body">
-            <div class="ph-icon">🖼️</div>
-            <h2>编辑页</h2>
-            <p>滤镜 · 拖拽取景 · 排版<br/>将在下一轮实现</p>
-            <p class="ph-meta" id="editorMeta"></p>
+
+          <div class="editor-stage">
+            <div class="editor-paper" id="editorPaper">
+              <div class="editor-image" id="editorImage">
+                <div class="ecell-grid" id="cellGrid"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="filter-bar" id="filterBar"></div>
+
+          <div class="tabbar-safe">
+            <button class="btn-primary" id="btnConfirm">确认 · 出片</button>
           </div>
         </div>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden />
       </section>
 
       <!-- ④ 显影（下轮实现） -->
@@ -156,6 +167,7 @@
 
   <script src="js/core.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/render.js"></script>
   <script src="js/screens.js"></script>
 </body>
 </html>

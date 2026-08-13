@@ -45,11 +45,150 @@
     App.go('editor');
   });
 
-  /* —— ③ 编辑（占位） —— */
-  App.registerScreen('editor', function () {
-    const m = $('#editorMeta');
-    if (m) m.textContent =
-      `相纸：${App.PAPER_SPECS[App.state.type].name} · ${App.state.mode} 张`;
+  /* —— ③ 编辑：上传 + 居中相纸 + 每格拖拽取景 + 滤镜实时预览 —— */
+  const PLUS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+  let _pendingStart = 0;
+
+  App.registerScreen('editor', function () { buildEditor(); });
+
+  function buildEditor() {
+    const paper = $('#editorPaper');
+    paper.className = 'editor-paper ' + App.state.type;
+
+    // 成像区按真实比例定位
+    const r = App.imageAreaRatio(App.state.type);
+    const img = $('#editorImage');
+    img.style.left = (r.x * 100) + '%';
+    img.style.top  = (r.y * 100) + '%';
+    img.style.width  = (r.w * 100) + '%';
+    img.style.height = (r.h * 100) + '%';
+
+    // 网格（1 / 4 / 9）
+    const grid = $('#cellGrid');
+    grid.className = 'ecell-grid g' + App.state.mode;
+    grid.innerHTML = '';
+    const n = App.state.mode;
+    for (let i = 0; i < n; i++) {
+      const cell = App.el('div', 'ecell');
+      const canvas = App.el('canvas', 'ecanvas');
+      const empty = App.el('div', 'ecell-empty', PLUS_SVG);
+      cell.append(canvas, empty);
+      cell.addEventListener('click', () => { if (!hasPhoto(i)) openPicker(i, false); });
+      attachDrag(cell, i);
+      grid.appendChild(cell);
+      renderCell(i);
+    }
+    buildFilterBar();
+  }
+
+  function hasPhoto(i) {
+    const p = App.state.photos[i];
+    return !!(p && p.img);
+  }
+
+  function renderCell(i) {
+    const grid = $('#cellGrid');
+    const cell = grid.children[i];
+    if (!cell) return;
+    const canvas = cell.querySelector('canvas');
+    const empty = cell.querySelector('.ecell-empty');
+    const p = App.state.photos[i];
+    if (p && p.img) {
+      empty.style.display = 'none';
+      const fd = App.getFilter(App.state.filterId);
+      const res = App.drawPhoto(canvas, p.img, p.dx, p.dy, fd, App.state.filterIntensity);
+      p.dx = res.dx; p.dy = res.dy;
+    } else {
+      empty.style.display = 'grid';
+      const ctx = canvas.getContext('2d');
+      if (canvas.width) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  /* 拖拽取景：平移夹紧在 cover 余量内，不露白边 */
+  function attachDrag(cell, i) {
+    let sx, sy, bdx, bdy;
+    cell.addEventListener('pointerdown', (e) => {
+      const p = App.state.photos[i];
+      if (!p || !p.img) return;
+      sx = e.clientX; sy = e.clientY; bdx = p.dx || 0; bdy = p.dy || 0;
+      cell.setPointerCapture(e.pointerId);
+    });
+    cell.addEventListener('pointermove', (e) => {
+      const p = App.state.photos[i];
+      if (!p || !p.img) return;
+      const dpr = window.devicePixelRatio || 1;
+      p.dx = bdx + (e.clientX - sx) * dpr;
+      p.dy = bdy + (e.clientY - sy) * dpr;
+      renderCell(i);
+    });
+    cell.addEventListener('pointerup', (e) => {
+      try { cell.releasePointerCapture(e.pointerId); } catch (_) {}
+    });
+  }
+
+  /* 文件选择：从 startIndex 起顺序填充（支持多选一次填多格） */
+  function openPicker(startIndex, multiple) {
+    _pendingStart = startIndex;
+    const inp = $('#fileInput');
+    inp.multiple = !!multiple;
+    inp.value = '';
+    inp.onchange = () => {
+      const files = Array.from(inp.files || []);
+      files.forEach((f, idx) => {
+        const ci = startIndex + idx;
+        if (ci >= App.state.mode) return;
+        loadFile(f, ci);
+      });
+    };
+    inp.click();
+  }
+
+  function loadFile(file, idx) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        App.state.photos[idx] = { src: reader.result, img, dx: 0, dy: 0 };
+        renderCell(idx);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function buildFilterBar() {
+    const bar = $('#filterBar');
+    bar.innerHTML = '';
+    App.FILTERS.forEach((f) => {
+      const b = App.el('button', 'fpill' + (f.id === App.state.filterId ? ' sel' : ''), f.name);
+      b.addEventListener('click', () => {
+        App.state.filterId = f.id;
+        $$('#filterBar .fpill').forEach((x) => x.classList.remove('sel'));
+        b.classList.add('sel');
+        for (let i = 0; i < App.state.mode; i++) renderCell(i);
+      });
+      bar.appendChild(b);
+    });
+  }
+
+  $('#btnUpload').addEventListener('click', () => {
+    // 从第一个空格开始填充；若已满则从头重选
+    let start = App.state.photos.findIndex((p) => !(p && p.img));
+    if (start < 0) start = 0;
+    openPicker(start, true);
+  });
+  $('#btnConfirm').addEventListener('click', () => App.go('develop'));
+
+  // 视口变化时重绘当前编辑格（保持清晰度）
+  let _rzTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(_rzTimer);
+    _rzTimer = setTimeout(() => {
+      if (App.stack[App.stack.length - 1] === 'editor') {
+        for (let i = 0; i < App.state.mode; i++) renderCell(i);
+      }
+    }, 120);
   });
 
   /* —— ④ 显影 / ⑤ 成片（占位） —— */
