@@ -57,14 +57,23 @@
   cursor: pointer;
   text-align: left;
   box-shadow: 0 1px 3px rgba(0,0,0,.06);
-  transition: border-color .2s, transform .1s, box-shadow .2s;
+  transition: border-color .2s var(--ease), transform .12s var(--ease);
   position: relative;
+  -webkit-tap-highlight-color: transparent;
 }
-.type-card:active { transform: scale(.985); }
-.type-card.sel {
-  border-color: var(--accent);
+/* 选中态：用 ::after 预渲染蓝边+阴影，仅做 opacity/scale 合成层动画，
+   避免 box-shadow 逐帧重绘（移动端卡顿主因） */
+.type-card::after {
+  content: ""; position: absolute; inset: 0;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--accent);
   box-shadow: 0 0 0 1px var(--accent), 0 6px 16px -6px rgba(0,122,255,.35);
+  opacity: 0; transform: scale(.96);
+  transition: opacity .22s var(--ease), transform .22s var(--ease);
+  pointer-events: none;
 }
+.type-card.sel::after { opacity: 1; transform: scale(1); }
+.type-card:active { transform: scale(.985); }
 .tc-thumb { flex: none; width: 48px; display: grid; place-items: center; }
 .tc-meta { flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .tc-meta b { font-size: 16px; font-weight: 600; }
