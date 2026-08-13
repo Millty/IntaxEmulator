@@ -208,7 +208,11 @@
     _filterThumbs.forEach((t) => App.drawFilterThumb(t.canvas, src, t.def, 1));
   }
 
-  $('#btnConfirm').addEventListener('click', () => App.go('develop'));
+  $('#btnConfirm').addEventListener('click', () => {
+    const any = App.state.photos.some(p => p && p.img);
+    if (!any) { toast('请先选择照片'); return; }
+    App.go('develop');
+  });
 
   // 视口变化时重绘当前编辑格（保持清晰度）
   let _rzTimer;
@@ -221,9 +225,119 @@
     }, 120);
   });
 
-  /* —— ④ 显影 / ⑤ 成片（占位） —— */
-  App.registerScreen('develop', function () {});
-  App.registerScreen('result', function () {});
+  /* —— ④ 显影动画：模糊背景 + 相纸底部上滑出片 + 逐帧渐显 —— */
+  let _devRaf = 0;
+
+  App.registerScreen('develop', function () { startDevelop(); });
+
+  function startDevelop() {
+    if (_devRaf) cancelAnimationFrame(_devRaf);
+
+    const paper = $('#devPaper');
+    paper.className = 'dev-paper ' + App.state.type;
+    const r = App.imageAreaRatio(App.state.type);
+    const img = $('#devImage');
+    img.style.left = (r.x * 100) + '%';
+    img.style.top = (r.y * 100) + '%';
+    img.style.width = (r.w * 100) + '%';
+    img.style.height = (r.h * 100) + '%';
+
+    const grid = $('#devGrid');
+    grid.className = 'ecell-grid g' + App.state.mode;
+    grid.innerHTML = '';
+    const n = App.state.mode;
+    const cells = [];
+    for (let i = 0; i < n; i++) {
+      const cell = App.el('div', 'ecell');
+      const cv = App.el('canvas', 'ecanvas');
+      cell.appendChild(cv);
+      grid.appendChild(cell);
+      cells.push(cv);
+    }
+
+    drawDevBg();
+    paper.style.transform = 'translateY(105%)';   // 从最下方（顶端贴底）起滑，无空白
+
+    const EJECT = App.EJECT_MS, DEV = App.DEV_MS;
+    const fd = App.getFilter(App.state.filterId);
+    const intensity = App.state.filterIntensity;
+    const start = performance.now();
+
+    function frame(now) {
+      const t = now - start;
+      const eject = Math.min(t, EJECT) / EJECT;            // 0~1 匀速上滑
+      const devT = Math.max(0, Math.min(1, (t - EJECT) / DEV)); // 0~1 显影
+      paper.style.transform = 'translateY(' + ((1 - eject) * 105) + '%)';
+      for (let i = 0; i < n; i++) {
+        const p = App.state.photos[i];
+        if (p && p.img) {
+          const res = App.drawCellDevelop(cells[i], p.img, p.dx, p.dy, fd, intensity, devT);
+          p.dx = res.dx; p.dy = res.dy;
+        }
+      }
+      if (t < EJECT + DEV) { _devRaf = requestAnimationFrame(frame); }
+      else finishDevelop();
+    }
+    _devRaf = requestAnimationFrame(frame);
+
+    function finishDevelop() {
+      if (_devRaf) cancelAnimationFrame(_devRaf);
+      _devRaf = 0;
+      const dev = document.getElementById('screen-develop');
+      dev.classList.remove('active');
+      App.stack.pop();                 // 把显影屏移出栈，使成片返回直达编辑页
+      App.go('result');
+    }
+
+    $('#devSkip').onclick = () => {
+      if (_devRaf) cancelAnimationFrame(_devRaf);
+      _devRaf = 0;
+      const dev = document.getElementById('screen-develop');
+      dev.classList.remove('active');
+      App.stack.pop();
+      App.go('result');
+    };
+  }
+
+  function drawDevBg() {
+    const bg = $('#devBg');
+    const src = firstPhotoImg();
+    if (!src || !src.naturalWidth) return;
+    const rect = bg.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    bg.width = Math.max(1, Math.round(rect.width * dpr));
+    bg.height = Math.max(1, Math.round(rect.height * dpr));
+    const ctx = bg.getContext('2d');
+    const scale = Math.max(bg.width / src.naturalWidth, bg.height / src.naturalHeight);
+    const dw = src.naturalWidth * scale, dh = src.naturalHeight * scale;
+    ctx.drawImage(src, (bg.width - dw) / 2, (bg.height - dh) / 2, dw, dh);
+  }
+
+  /* —— ⑤ 成片预览：整图渲染 + 长按保存 3x —— */
+  App.registerScreen('result', function () {
+    const canvas = $('#resultCanvas');
+    const c = App.renderWholePaper(1);     // 预览用 1x 渲染（导出时再 3x）
+    canvas.width = c.width; canvas.height = c.height;
+    canvas.getContext('2d').drawImage(c, 0, 0);
+    bindLongPress(canvas);
+  });
+
+  function bindLongPress(el) {
+    let timer = null;
+    el.onpointerdown = () => { timer = setTimeout(() => App.exportPaper(), 600); };
+    el.onpointerup = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    el.onpointerleave = el.onpointerup;
+    el.onpointercancel = el.onpointerup;
+    el.oncontextmenu = (e) => { e.preventDefault(); App.exportPaper(); };
+  }
+
+  /* 轻量提示 */
+  function toast(msg) {
+    const t = App.el('div', 'toast', msg);
+    document.body.appendChild(t);
+    requestAnimationFrame(() => t.classList.add('show'));
+    setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 1600);
+  }
 
   /* —— 全局返回按钮 —— */
   $$('[data-back]').forEach(b => b.addEventListener('click', () => App.back()));

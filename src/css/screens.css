@@ -159,3 +159,55 @@
 .ph-body p { margin: 0; font-size: 15px; color: var(--label-2); line-height: 1.6; }
 .ph-meta { margin-top: 14px; font-size: 12.5px; color: var(--label-3);
   font-family: ui-monospace, "SF Mono", monospace; letter-spacing: .02em; }
+
+/* —— ④ 显影屏 —— */
+.develop { position: relative; background: #0a0a0c; overflow: hidden; }
+.dev-bg {
+  position: absolute; inset: -8%; width: 116%; height: 116%;
+  object-fit: cover; filter: blur(34px) brightness(.6) saturate(.9);
+  transform: scale(1.12); pointer-events: none;
+}
+.dev-layer {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.dev-paper {
+  position: relative; background: #fff; border-radius: 8px;
+  box-shadow: 0 30px 70px -22px rgba(0,0,0,.65), 0 8px 22px rgba(0,0,0,.35);
+  overflow: hidden;
+  /* 初始在最下方（顶端贴底），由 JS 用 transform: translateY 匀速上滑入场 */
+  transform: translateY(105%);
+  will-change: transform;
+}
+.dev-paper.mini { aspect-ratio: 54 / 86; width: min(86%, calc(62vh * 54 / 86)); }
+.dev-paper.sq   { aspect-ratio: 72 / 86; width: min(86%, calc(58vh * 72 / 86)); }
+.dev-paper.wide { aspect-ratio: 108 / 86; width: min(86%, calc(48vh * 108 / 86)); }
+.dev-image { position: absolute; overflow: hidden; background: #111; }
+
+.dev-skip {
+  position: absolute; top: 54px; right: 18px;
+  font-size: 13px; color: rgba(245,243,238,.66);
+  letter-spacing: .04em; background: rgba(0,0,0,.2);
+  border: 0; padding: 7px 15px; border-radius: 20px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; backdrop-filter: blur(6px);
+}
+.dev-skip:active { opacity: .6; }
+
+/* —— ⑤ 成片屏 —— */
+.result { background: var(--bg); }
+.result-stage {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+  padding: 18px; min-height: 0;
+}
+.result-canvas {
+  max-width: 86%; max-height: 64vh;
+  border-radius: 8px; background: #fff;
+  box-shadow: 0 22px 46px -18px rgba(0,0,0,.42), 0 6px 16px rgba(0,0,0,.2);
+  touch-action: none;          /* 长按不触发滚动/选中 */
+  -webkit-touch-callout: none;
+}
+.result-hint {
+  margin: 0; font-size: 13px; color: var(--label-2);
+  font-weight: 500; letter-spacing: .02em;
+}

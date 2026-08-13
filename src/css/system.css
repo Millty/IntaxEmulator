@@ -262,3 +262,13 @@ body {
 
 /* 文件选择框：视觉隐藏但保留可点击（不用 display:none 以免程序化 click 被拦截） */
 .file-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+/* 轻量提示 toast */
+.toast {
+  position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%) translateY(10px);
+  background: rgba(30,30,34,.92); color: #fff; font-size: 13.5px; font-weight: 500;
+  padding: 10px 18px; border-radius: 22px; z-index: 9999; opacity: 0;
+  transition: opacity .26s var(--ease), transform .26s var(--ease);
+  pointer-events: none; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

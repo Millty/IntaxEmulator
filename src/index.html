@@ -126,27 +126,24 @@
         <input type="file" id="fileInput" accept="image/*" class="file-hidden" />
       </section>
 
-      <!-- ④ 显影（下轮实现） -->
+      <!-- ④ 显影动画：模糊背景 + 相纸底部上滑出片 + 逐帧显影 -->
       <section class="screen" id="screen-develop">
-        <div class="screen-inner placeholder">
-          <nav class="navbar">
-            <button class="nav-back" data-back aria-label="返回">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
-            </button>
-            <span class="nav-title">显影</span>
-            <span class="nav-right"></span>
-          </nav>
-          <div class="ph-body">
-            <div class="ph-icon">🎞️</div>
-            <h2>显影动画</h2>
-            <p>出片滑动 → 逐帧显影<br/>将在下一轮实现</p>
+        <div class="screen-inner develop">
+          <canvas class="dev-bg" id="devBg"></canvas>
+          <div class="dev-layer">
+            <div class="dev-paper" id="devPaper">
+              <div class="dev-image" id="devImage">
+                <div class="ecell-grid" id="devGrid"></div>
+              </div>
+            </div>
           </div>
+          <button class="dev-skip" id="devSkip">轻点跳过</button>
         </div>
       </section>
 
-      <!-- ⑤ 成片（下轮实现） -->
+      <!-- ⑤ 成片预览：整图渲染 + 长按保存 3x -->
       <section class="screen" id="screen-result">
-        <div class="screen-inner placeholder">
+        <div class="screen-inner result">
           <nav class="navbar">
             <button class="nav-back" data-back aria-label="返回">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
@@ -154,10 +151,9 @@
             <span class="nav-title">成片</span>
             <span class="nav-right"></span>
           </nav>
-          <div class="ph-body">
-            <div class="ph-icon">📷</div>
-            <h2>成片预览</h2>
-            <p>长按保存 · 3x PNG<br/>将在下一轮实现</p>
+          <div class="result-stage">
+            <canvas id="resultCanvas" class="result-canvas"></canvas>
+            <p class="result-hint">长按相纸保存 · 3x PNG</p>
           </div>
         </div>
       </section>
