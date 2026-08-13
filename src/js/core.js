@@ -7,12 +7,12 @@ window.App = window.App || {};
   'use strict';
 
   /* —— 相纸规格：真实 instax 毫米比例 ——
-     borders: 上 / 左右 / 下 白边（mm） */
+     borders: 上 / 左右 / 下 白边（mm）
+     Mini 成像 46×62（下白边约 25%）；Square 成像 62×62（四周对称）；Wide 官方 108×86 / 成像 99×62 */
   App.PAPER_SPECS = {
-    // mini 调整为真实 instax mini 比例：成像区 46×62mm，下留白 18mm（参考实拍图）
-    mini: { name: 'mini 系列', w: 54,  h: 86, borders: { top: 6,   side: 4,   bottom: 18 } },
-    sq:   { name: 'sq 系列',   w: 72,  h: 86, borders: { top: 5,   side: 5,   bottom: 19 } },
-    wide: { name: 'wide 系列', w: 108, h: 86, borders: { top: 2,   side: 4.5, bottom: 22 } }
+    mini: { name: 'mini 系列', w: 54,  h: 86, borders: { top: 2.5, side: 4,   bottom: 21.5 } },
+    sq:   { name: 'sq 系列',   w: 72,  h: 86, borders: { top: 12,  side: 5,   bottom: 12 } },
+    wide: { name: 'wide 系列', w: 108, h: 86, borders: { top: 4,   side: 4.5, bottom: 20 } }
   };
 
   /* 计算成像区相对整张相纸的归一化比例 {x,y,w,h}（0~1） */
@@ -27,15 +27,23 @@ window.App = window.App || {};
     };
   };
 
-  /* —— 滤镜预设：instax / 富士感（参数化，供 Canvas 管线复用）——
-     filter: ctx.filter 字符串；grain 颗粒强度 0~1；vignette 暗角 0~1 */
+  /* —— 滤镜预设：仿 instax 化学显影（参数化，供 Canvas 管线复用）——
+     filter : ctx.filter 字符串（曝光/对比/色温/饱和，现代浏览器生效）
+     tint   : 化学色偏叠加 {hi:亮部色, lo:暗部色, amt}（soft-light 混合，全浏览器生效，保证滤镜可辨）
+     grain  : 颗粒强度(ISO800~1600 中等)；vignette : 暗角 */
   App.FILTERS = [
-    { id: 'standard', name: '标准', filter: 'sepia(.22) saturate(1.14) contrast(1.10) brightness(1.02)', grain: .09, vignette: .18 },
-    { id: 'vivid',    name: '鲜艳', filter: 'saturate(1.45) contrast(1.20) brightness(1.03)',            grain: .08, vignette: .20 },
-    { id: 'mono',     name: '单色', filter: 'grayscale(1) contrast(1.28) brightness(1.03)',              grain: .12, vignette: .22 },
-    { id: 'faded',    name: '褪色', filter: 'sepia(.14) saturate(.78) contrast(.90) brightness(1.10)',  grain: .07, vignette: .15 },
-    { id: 'teal',     name: '青影', filter: 'sepia(.18) hue-rotate(-22deg) saturate(1.10) contrast(1.08)', grain: .09, vignette: .20 },
-    { id: 'warm',     name: '暖阳', filter: 'sepia(.38) saturate(1.20) contrast(1.06) brightness(1.04)', grain: .08, vignette: .18 }
+    { id: 'standard', name: '标准', filter: 'sepia(.30) saturate(.88) contrast(1.20) brightness(1.12)',
+      tint: { hi: '#ffd9a0', lo: '#41607f', amt: .22 }, grain: .16, vignette: .20 },
+    { id: 'vivid',    name: '鲜艳', filter: 'saturate(1.18) contrast(1.28) brightness(1.08)',
+      tint: { hi: '#ffcf8f', lo: '#2e4a66', amt: .18 }, grain: .14, vignette: .22 },
+    { id: 'mono',     name: '单色', filter: 'grayscale(1) contrast(1.35) brightness(1.06)',
+      tint: null, grain: .20, vignette: .26 },
+    { id: 'faded',    name: '褪色', filter: 'sepia(.12) saturate(.72) contrast(.92) brightness(1.16)',
+      tint: { hi: '#fff0d0', lo: '#9fb6c4', amt: .12 }, grain: .12, vignette: .15 },
+    { id: 'teal',     name: '青影', filter: 'sepia(.20) hue-rotate(-16deg) saturate(.95) contrast(1.16) brightness(1.10)',
+      tint: { hi: '#bfeae0', lo: '#1f4a5a', amt: .24 }, grain: .16, vignette: .22 },
+    { id: 'warm',     name: '暖阳', filter: 'sepia(.42) saturate(1.10) contrast(1.14) brightness(1.14)',
+      tint: { hi: '#ffcf8a', lo: '#6a4a5a', amt: .30 }, grain: .15, vignette: .20 }
   ];
 
   App.getFilter = function (id) {

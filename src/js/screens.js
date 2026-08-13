@@ -363,7 +363,7 @@
     ctx.drawImage(src, (bg.width - dw) / 2, (bg.height - dh) / 2, dw, dh);
   }
 
-  /* —— ⑤ 成片预览：整图渲染 + 长按保存 3x —— */
+  /* —— ⑤ 成片预览：整图渲染 + 保存到系统相册 —— */
   App.registerScreen('result', function () {
     const canvas = $('#resultCanvas');
     const c = App.renderWholePaper(1);     // 预览用 1x 渲染（导出时再 3x）
@@ -372,13 +372,22 @@
     bindLongPress(canvas);
   });
 
+  // 「保存到相册」按钮（点击即处于用户手势中，可直接调起系统分享/存图）
+  const btnSave = $('#btnSave');
+  if (btnSave) btnSave.addEventListener('click', () => App.exportPaper());
+
+  /* 长按照片：在 pointerup 时判定按压时长（保留用户手势，便于调起系统分享）
+     按住 ≥500ms 松开即保存；右键菜单也直接保存 */
   function bindLongPress(el) {
-    let timer = null;
-    el.onpointerdown = () => { timer = setTimeout(() => App.exportPaper(), 600); };
-    el.onpointerup = () => { if (timer) { clearTimeout(timer); timer = null; } };
-    el.onpointerleave = el.onpointerup;
-    el.onpointercancel = el.onpointerup;
-    el.oncontextmenu = (e) => { e.preventDefault(); App.exportPaper(); };
+    let ps = 0, fired = false;
+    el.addEventListener('pointerdown', () => { ps = Date.now(); fired = false; });
+    el.addEventListener('pointerup', () => {
+      if (ps && Date.now() - ps >= 500 && !fired) { fired = true; App.exportPaper(); }
+      ps = 0;
+    });
+    el.addEventListener('pointerleave', () => { ps = 0; });
+    el.addEventListener('pointercancel', () => { ps = 0; });
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); App.exportPaper(); });
   }
 
   /* 轻量提示 */

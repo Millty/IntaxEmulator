@@ -1,33 +1,95 @@
 /* ============================================================
-   render.js — Canvas 渲染管线（滤镜 / 颗粒 / 暗角 / 覆盖裁剪）
-   拍立得模拟器 · 阶段三 Round 2
+   render.js — Canvas 渲染管线（滤镜 / 化学色偏 / 颗粒 / 暗角 / 显影 / 导出）
+   拍立得模拟器 · 阶段三
    原则：预览即导出（同一套绘制，导出仅放大倍率）
    ============================================================ */
 window.App = window.App || {};
 (function (App) {
   'use strict';
 
-  /* 预生成噪点纹理（一次生成，平铺复用） */
+  /* 预生成噪点纹理（一次生成，平铺复用）— ISO800~1600 中等颗粒 */
   let _noise;
   App.getNoise = function () {
     if (_noise) return _noise;
-    const s = 128;
+    const s = 160;
     const c = document.createElement('canvas');
     c.width = s; c.height = s;
     const x = c.getContext('2d');
     const img = x.createImageData(s, s);
     for (let i = 0; i < img.data.length; i += 4) {
-      const v = 200 + Math.random() * 55;        // 浅灰噪点
+      const v = 180 + Math.random() * 75;
       img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-      img.data[i + 3] = Math.random() * 38;       // 低 alpha
+      img.data[i + 3] = Math.random() * 46;       // 中等颗粒
     }
     x.putImageData(img, 0, 0);
     _noise = c;
     return c;
   };
 
-  /* 把照片绘制进 canvas：cover 适配 + 用户平移(dx,dy) + 滤镜 + 颗粒 + 暗角
-     返回校正后的 {dx, dy}（已按 cover 余量夹紧，避免露白边） */
+  function roundRect(ctx, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  /* 统一调色叠加：化学色偏(tint) + 颗粒 + 暗角 + 显影白遮罩
+     region(x,y,w,h)；whiteAmt: 0~1 显影白遮罩强度
+     tint 用 soft-light 混合，全浏览器生效——即使 ctx.filter 不被支持，滤镜切换仍明显可辨 */
+  App.applyOverlays = function (ctx, x, y, w, h, fd, intensity, whiteAmt) {
+    intensity = intensity == null ? 1 : intensity;
+    // 化学色偏：亮部暖黄 / 暗部青蓝
+    if (fd && fd.tint) {
+      const g = ctx.createLinearGradient(0, y, 0, y + h);
+      g.addColorStop(0, fd.tint.hi);
+      g.addColorStop(1, fd.tint.lo);
+      ctx.save();
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.globalAlpha = fd.tint.amt * intensity;
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+    }
+    // 胶片颗粒（overlay）
+    if (fd && fd.grain) {
+      const n = App.getNoise();
+      const pat = ctx.createPattern(n, 'repeat');
+      ctx.save();
+      ctx.globalAlpha = fd.grain * intensity;
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.fillStyle = pat;
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+    }
+    // 暗角
+    if (fd && fd.vignette) {
+      const vg = fd.vignette * intensity;
+      const rg = ctx.createRadialGradient(
+        x + w / 2, y + h / 2, Math.min(w, h) * 0.34,
+        x + w / 2, y + h / 2, Math.max(w, h) * 0.74
+      );
+      rg.addColorStop(0, 'rgba(0,0,0,0)');
+      rg.addColorStop(1, 'rgba(0,0,0,' + vg.toFixed(3) + ')');
+      ctx.save();
+      ctx.fillStyle = rg;
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+    }
+    // 显影白遮罩（由纯白浮现）
+    if (whiteAmt > 0.001) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(250,248,243,' + whiteAmt.toFixed(3) + ')';
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+    }
+  };
+
+  /* 把照片绘制进 canvas：cover + 用户平移/缩放 + 滤镜 + 调色叠加
+     返回校正后的 {dx, dy, scale}（已按 cover 余量夹紧，避免露白边） */
   App.drawPhoto = function (canvas, img, dx, dy, filterDef, intensity, scale) {
     const ctx = canvas.getContext('2d');
     const rect = canvas.getBoundingClientRect();
@@ -41,7 +103,7 @@ window.App = window.App || {};
     if (!img || !img.complete || !img.naturalWidth) return { dx: dx || 0, dy: dy || 0, scale: scale || 1 };
 
     intensity = intensity == null ? 1 : intensity;
-    const userScale = Math.max(1, scale || 1);               // 不允许缩到比 cover 还小（避免露白）
+    const userScale = Math.max(1, scale || 1);               // ≥1 避免缩到比 cover 更小（露白）
     const coverScale = Math.max(W / img.naturalWidth, H / img.naturalHeight);
     const s = coverScale * userScale;
     const dw = img.naturalWidth * s, dh = img.naturalHeight * s;
@@ -50,51 +112,17 @@ window.App = window.App || {};
     dx = Math.max(-maxX, Math.min(maxX, dx || 0));
     dy = Math.max(-maxY, Math.min(maxY, dy || 0));
 
-    // 滤镜层
     ctx.save();
     if (filterDef && filterDef.filter) ctx.filter = filterDef.filter;
     ctx.drawImage(img, baseX + dx, baseY + dy, dw, dh);
     ctx.filter = 'none';
     ctx.restore();
 
-    // 滤镜强度 < 1：叠加未滤镜原图降低强度
-    if (intensity < 1) {
-      ctx.save();
-      ctx.globalAlpha = 1 - intensity;
-      ctx.drawImage(img, baseX + dx, baseY + dy, dw, dh);
-      ctx.restore();
-    }
-
-    // 胶片颗粒
-    if (filterDef && filterDef.grain) {
-      const n = App.getNoise();
-      const pat = ctx.createPattern(n, 'repeat');
-      ctx.save();
-      ctx.globalAlpha = filterDef.grain * intensity;
-      ctx.globalCompositeOperation = 'overlay';
-      ctx.fillStyle = pat;
-      ctx.fillRect(0, 0, W, H);
-      ctx.restore();
-    }
-
-    // 暗角
-    if (filterDef && filterDef.vignette) {
-      const vg = filterDef.vignette * intensity;
-      const g = ctx.createRadialGradient(
-        W / 2, H / 2, Math.min(W, H) * 0.35,
-        W / 2, H / 2, Math.max(W, H) * 0.72
-      );
-      g.addColorStop(0, 'rgba(0,0,0,0)');
-      g.addColorStop(1, 'rgba(0,0,0,' + vg.toFixed(3) + ')');
-      ctx.save();
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, H);
-      ctx.restore();
-    }
+    App.applyOverlays(ctx, 0, 0, W, H, filterDef, intensity, 0);
     return { dx, dy, scale: userScale };
   };
 
-  /* 缩略图绘制：把 source(用户照片 或 样本图) 以某滤镜画进小 canvas（供滤镜选择条预览） */
+  /* 缩略图绘制（滤镜选择条实时预览） */
   App.drawFilterThumb = function (canvas, source, filterDef, intensity) {
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
@@ -103,37 +131,18 @@ window.App = window.App || {};
     const sw = source.naturalWidth || source.width;
     const sh = source.naturalHeight || source.height;
     if (!sw || !sh) return;
-    const scale = Math.max(W / sw, H / sh);           // cover
-    const dw = sw * scale, dh = sh * scale;
+    const sc = Math.max(W / sw, H / sh);            // cover
+    const dw = sw * sc, dh = sh * sc;
     const dx = (W - dw) / 2, dy = (H - dh) / 2;
     intensity = intensity == null ? 1 : intensity;
 
     ctx.save();
     if (filterDef && filterDef.filter) ctx.filter = filterDef.filter;
     ctx.drawImage(source, dx, dy, dw, dh);
+    ctx.filter = 'none';
     ctx.restore();
-    if (intensity < 1) {
-      ctx.save();
-      ctx.globalAlpha = 1 - intensity;
-      ctx.drawImage(source, dx, dy, dw, dh);
-      ctx.restore();
-    }
-    if (filterDef && filterDef.grain) {
-      const n = App.getNoise();
-      const pat = ctx.createPattern(n, 'repeat');
-      ctx.save();
-      ctx.globalAlpha = filterDef.grain * intensity;
-      ctx.globalCompositeOperation = 'overlay';
-      ctx.fillStyle = pat; ctx.fillRect(0, 0, W, H);
-      ctx.restore();
-    }
-    if (filterDef && filterDef.vignette) {
-      const vg = filterDef.vignette * intensity;
-      const g = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.72);
-      g.addColorStop(0, 'rgba(0,0,0,0)');
-      g.addColorStop(1, 'rgba(0,0,0,' + vg.toFixed(3) + ')');
-      ctx.save(); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
-    }
+
+    App.applyOverlays(ctx, 0, 0, W, H, filterDef, intensity, 0);
   };
 
   /* 生成一张彩色「样本照片」（无上传时也能预览滤镜色调），返回 canvas */
@@ -158,10 +167,8 @@ window.App = window.App || {};
     return c;
   };
 
-  /* 显影绘制：在 drawPhoto 基础上叠加「从空白渐显」显影过程
-     developT: 0(全白空白)→1(完全显影)。返回 {dx,dy}（已夹紧）。
-     做法：目标滤镜字符串 + 随显影进度衰减的附加项（过曝/模糊/低对比），
-           最上层再叠一层从纯白衰减的白色遮罩，模拟化学显影由白浮现。 */
+  /* 显影绘制：目标滤镜 + 随进度衰减的过曝/模糊/低对比 + 白遮罩
+     developT: 0(全白空白)→1(完全显影)。返回 {dx,dy,scale}（已夹紧）。 */
   App.drawCellDevelop = function (canvas, img, dx, dy, filterDef, intensity, developT, scale) {
     const ctx = canvas.getContext('2d');
     const rect = canvas.getBoundingClientRect();
@@ -184,11 +191,11 @@ window.App = window.App || {};
     dy = Math.max(-maxY, Math.min(maxY, dy || 0));
 
     const d = (developT == null) ? 0 : Math.max(0, Math.min(1, 1 - developT));
-    const s = d * d * (3 - 2 * d);   // smoothstep 平滑显影
+    const sm = d * d * (3 - 2 * d);   // smoothstep 平滑显影
 
     let filterStr = (filterDef && filterDef.filter) || '';
-    if (s > 0.001) {
-      filterStr += ` brightness(${(1 + s * 1.25).toFixed(3)}) contrast(${(1 - s * 0.58).toFixed(3)}) saturate(${(1 - s * 0.42).toFixed(3)}) blur(${(s * 7).toFixed(2)}px)`;
+    if (sm > 0.001) {
+      filterStr += ` brightness(${(1 + sm * 1.25).toFixed(3)}) contrast(${(1 - sm * 0.58).toFixed(3)}) saturate(${(1 - sm * 0.42).toFixed(3)}) blur(${(sm * 7).toFixed(2)}px)`;
     }
     ctx.save();
     if (filterStr) ctx.filter = filterStr;
@@ -196,30 +203,10 @@ window.App = window.App || {};
     ctx.filter = 'none';
     ctx.restore();
 
-    if (intensity < 1) {
-      ctx.save(); ctx.globalAlpha = 1 - intensity;
-      ctx.drawImage(img, baseX + dx, baseY + dy, dw, dh); ctx.restore();
-    }
-    if (filterDef && filterDef.grain) {
-      const n = App.getNoise();
-      const pat = ctx.createPattern(n, 'repeat');
-      ctx.save();
-      ctx.globalAlpha = filterDef.grain * intensity * (1 + s * 0.8);  // 显影中颗粒更明显
-      ctx.globalCompositeOperation = 'overlay';
-      ctx.fillStyle = pat; ctx.fillRect(0, 0, W, H); ctx.restore();
-    }
-    if (filterDef && filterDef.vignette) {
-      const vg = filterDef.vignette * intensity;
-      const g = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.72);
-      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,' + vg.toFixed(3) + ')');
-      ctx.save(); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
-    }
-    if (s > 0.001) {   // 白色显影遮罩：从纯白浮现
-      ctx.save();
-      ctx.fillStyle = 'rgba(250,248,243,' + s.toFixed(3) + ')';
-      ctx.fillRect(0, 0, W, H);
-      ctx.restore();
-    }
+    // 显影中颗粒更明显（不均匀显影感）
+    const grainAmt = filterDef && filterDef.grain ? filterDef.grain * (1 + sm * 0.8) : 0;
+    App.applyOverlays(ctx, 0, 0, W, H,
+      Object.assign({}, filterDef, { grain: grainAmt }), intensity, sm);
     return { dx, dy, scale: userScale };
   };
 
@@ -236,70 +223,52 @@ window.App = window.App || {};
       const maxX = (dw - w) / 2, maxY = (dh - h) / 2;
       let dx = Math.max(-maxX, Math.min(maxX, img._dx || 0));
       let dy = Math.max(-maxY, Math.min(maxY, img._dy || 0));
+      ctx.save();
       if (fd && fd.filter) ctx.filter = fd.filter;
       ctx.drawImage(img, baseX + dx, baseY + dy, dw, dh);
       ctx.filter = 'none';
-      if (intensity < 1) { ctx.globalAlpha = 1 - intensity; ctx.drawImage(img, baseX + dx, baseY + dy, dw, dh); ctx.globalAlpha = 1; }
-      if (fd && fd.grain) {
-        const n = App.getNoise(); const pat = ctx.createPattern(n, 'repeat');
-        ctx.globalAlpha = fd.grain * intensity; ctx.globalCompositeOperation = 'overlay';
-        ctx.fillStyle = pat; ctx.fillRect(x, y, w, h); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-      }
-      if (fd && fd.vignette) {
-        const vg = fd.vignette * intensity;
-        const g = ctx.createRadialGradient(x+w/2, y+h/2, Math.min(w,h)*0.35, x+w/2, y+h/2, Math.max(w,h)*0.72);
-        g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,' + vg.toFixed(3) + ')');
-        ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
-      }
+      ctx.restore();
+      App.applyOverlays(ctx, x, y, w, h, fd, intensity, 0);
     } else {
       ctx.fillStyle = '#1a1a1a'; ctx.fillRect(x, y, w, h);
     }
     ctx.restore();
   }
 
-  /* 生成整张拍立得相纸（含白边 + 成像区 + 网格 + 滤镜 + 日期戳），返回离屏 canvas
-     scaleOverride 不传则用 App.EXPORT.scale（默认 3x） */
+  /* 生成整张拍立得相纸（圆角白纸 + 投影 + 成像区 + 网格 + 滤镜），返回离屏 canvas
+     scaleOverride 不传则用 App.EXPORT.scale（默认 3x）。无文字水印。 */
   App.renderWholePaper = function (scaleOverride) {
     const type = App.state.type, spec = App.PAPER_SPECS[type];
     const scale = scaleOverride || App.EXPORT.scale;
     const BASE = 1024;                                  // wide 基准宽(1x)
-    const pW = Math.round(BASE * (spec.w / 108) * scale);   // 相纸宽（不含外边框）
+    const pW = Math.round(BASE * (spec.w / 108) * scale);   // 相纸宽
     const pH = Math.round(pW * (spec.h / spec.w));          // 相纸高
-    const PAD = Math.round(2 * scale);                      // 外边框 2 logical px
-    const W = pW + PAD * 2, H = pH + PAD * 2;
+    const R = Math.round(12 * scale);                      // 圆角
+    const SH = Math.round(28 * scale);                     // 外阴影留白
+    const W = pW + SH * 2, H = pH + SH * 2;
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
 
-    // 外层 2px 边框（让拍立得外边缘更清晰）
-    ctx.fillStyle = '#EBEBEB';
-    ctx.fillRect(0, 0, W, H);
-
-    // 白纸底
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(PAD, PAD, pW, pH);
-
-    // 相纸立体纹理：高光 + 阴影 + 极淡颗粒
-    const hi = ctx.createLinearGradient(PAD, PAD, PAD + pW, PAD + pH);
-    hi.addColorStop(0, 'rgba(255,255,255,.55)');
-    hi.addColorStop(.4, 'rgba(255,255,255,0)');
-    ctx.fillStyle = hi; ctx.fillRect(PAD, PAD, pW, pH);
-    const sh = ctx.createLinearGradient(PAD, PAD, PAD + pW, PAD + pH);
-    sh.addColorStop(.55, 'rgba(0,0,0,0)');
-    sh.addColorStop(1, 'rgba(0,0,0,.035)');
-    ctx.fillStyle = sh; ctx.fillRect(PAD, PAD, pW, pH);
-    // 细颗粒
-    const n = App.getNoise();
+    // 白纸（圆角）+ 投影，模拟实体照片
     ctx.save();
-    ctx.globalAlpha = .035;
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = ctx.createPattern(n, 'repeat');
-    ctx.fillRect(PAD, PAD, pW, pH);
+    ctx.shadowColor = 'rgba(0,0,0,.32)';
+    ctx.shadowBlur = SH * 0.85;
+    ctx.shadowOffsetY = Math.round(10 * scale);
+    roundRect(ctx, SH, SH, pW, pH, R);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
     ctx.restore();
+
+    // 裁剪进白纸范围
+    ctx.save();
+    roundRect(ctx, SH, SH, pW, pH, R);
+    ctx.clip();
 
     // 成像区
     const r = App.imageAreaRatio(type);
-    const ix = PAD + Math.round(r.x * pW), iy = PAD + Math.round(r.y * pH);
+    const ix = SH + Math.round(r.x * pW), iy = SH + Math.round(r.y * pH);
     const iw = Math.round(r.w * pW), ih = Math.round(r.h * pH);
     ctx.fillStyle = '#111'; ctx.fillRect(ix, iy, iw, ih);
 
@@ -307,7 +276,7 @@ window.App = window.App || {};
     const nCell = App.state.mode;
     const cols = nCell === 4 ? 2 : (nCell === 9 ? 3 : 1);
     const rows = cols;
-    const gap = Math.round(pW * 0.005);
+    const gap = Math.round(pW * 0.004);
     const cw = (iw - gap * (cols - 1)) / cols;
     const ch = (ih - gap * (rows - 1)) / rows;
 
@@ -329,33 +298,33 @@ window.App = window.App || {};
     ctx.strokeRect(ix - ctx.lineWidth / 2, iy - ctx.lineWidth / 2, iw + ctx.lineWidth, ih + ctx.lineWidth);
     ctx.restore();
 
-    // 日期戳（底部白边中央，等宽体还原拍立得日期）
-    const d = new Date();
-    const cap = d.getFullYear() + ' · ' + String(d.getMonth() + 1).padStart(2, '0');
-    ctx.fillStyle = '#8d877b';
-    ctx.font = Math.round(pW * 0.025) + 'px ui-monospace, "SF Mono", Menlo, monospace';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(cap, PAD + pW / 2, PAD + pH - Math.round(spec.borders.bottom / spec.h * pH * 0.5));
-
+    // 取消水印：不再绘制日期戳
+    ctx.restore();
     return c;
   };
 
-  /* 长按保存：导出整张相纸为 PNG（默认 3x），触发下载 */
+  /* 导出：优先存入系统相册（Web Share），不支持则回退为文件下载 */
   App.exportPaper = function () {
     const c = App.renderWholePaper();
-    if (!c.toBlob) {                       // 兜底
-      const a = document.createElement('a');
-      a.href = c.toDataURL('image/png');
-      a.download = 'polaroid-' + Date.now() + '.png';
-      a.click();
-      return;
-    }
+    const fallback = () => {
+      c.toBlob((b) => {
+        if (!b) return;
+        const url = URL.createObjectURL(b);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'polaroid-' + Date.now() + '.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      }, 'image/png');
+    };
+    if (!c.toBlob) { fallback(); return; }
     c.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'polaroid-' + Date.now() + '.png';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      if (!blob) { fallback(); return; }
+      const file = new File([blob], 'polaroid-' + Date.now() + '.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: '拍立得照片' }).catch(() => fallback());
+      } else {
+        fallback();
+      }
     }, 'image/png');
   };
 

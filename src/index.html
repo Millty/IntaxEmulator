@@ -12,16 +12,6 @@
 </head>
 <body>
   <div id="app">
-    <!-- 全局状态栏 -->
-    <div class="statusbar">
-      <span class="sb-time" id="sbTime">9:41</span>
-      <span class="sb-icons">
-        <span class="sb-signal" aria-hidden="true"></span>
-        <span class="sb-wifi" aria-hidden="true"></span>
-        <span class="sb-battery" aria-hidden="true"></span>
-      </span>
-    </div>
-
     <!-- 屏幕容器 -->
     <main class="stage">
       <!-- ① 主页 -->
@@ -153,7 +143,8 @@
           </nav>
           <div class="result-stage">
             <canvas id="resultCanvas" class="result-canvas"></canvas>
-            <p class="result-hint">长按相纸保存 · 3x PNG</p>
+            <p class="result-hint">点击「保存到相册」或长按相纸</p>
+            <button class="btn-primary" id="btnSave">保存到相册</button>
           </div>
         </div>
       </section>
