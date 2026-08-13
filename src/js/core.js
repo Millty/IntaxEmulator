@@ -40,8 +40,12 @@ window.App = window.App || {};
        lift     : 黑位抬升(褪色感)
      grain  : 颗粒强度(ISO800~1600 中等)；vignette : 暗角 */
   App.FILTERS = [
-    { id: 'standard', name: '标准', grain: .16, vignette: .20,
-      grade: { exposure: .10, contrast: .16, temp: .30, sat: -.08, hiWarm: .35, loTeal: .30 } },
+    /* 默认「经典」：还原真实拍立得/Instax 相纸质感
+       黑位抬升(lift) + 暖白(hiWarm) + 中等对比 + 去饱和 + 软焦(soft)
+       —— 对应即时胶片的扩散染料成像：lifted blacks / warm highlights /
+        moderate contrast / muted colour / soft focus */
+    { id: 'standard', name: '经典', grain: .18, vignette: .22, soft: .7,
+      grade: { exposure: .07, contrast: .12, temp: .20, sat: -.10, hiWarm: .28, loTeal: 0, lift: .08 } },
     { id: 'vivid',    name: '鲜艳', grain: .14, vignette: .22,
       grade: { exposure: .12, contrast: .24, temp: .22, sat: .06, hiWarm: .28, loTeal: .24 } },
     { id: 'mono',     name: '单色', grain: .20, vignette: .26,

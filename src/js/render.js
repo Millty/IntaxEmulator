@@ -99,6 +99,37 @@ window.App = window.App || {};
     if (!img._gid) img._gid = ++_gidSeq;
     return img._gid + '|' + (fd ? fd.id : '') + '|' + (intensity == null ? 1 : intensity);
   }
+  /* 软焦 + 光晕：模仿即时胶片扩散层 + 塑料镜头的柔化观感
+     用「降采样→升采样」得到低代价扩散模糊，再与清晰层混合产生 soft focus，
+     并用 screen 混合叠一层模糊亮部形成柔光晕。返回新 canvas（GPU 加速）。 */
+  function applySoft(src, lvl) {
+    const w = src.width, h = src.height;
+    const out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    const o = out.getContext('2d');
+    o.imageSmoothingEnabled = true; o.imageSmoothingQuality = 'high';
+    // 低分辨率模糊版本（双线性扩散）
+    const f = 0.20;
+    const bw = Math.max(1, Math.round(w * f)), bh = Math.max(1, Math.round(h * f));
+    const bc = document.createElement('canvas');
+    bc.width = bw; bc.height = bh;
+    const bx = bc.getContext('2d');
+    bx.imageSmoothingEnabled = true; bx.imageSmoothingQuality = 'high';
+    bx.drawImage(src, 0, 0, bw, bh);
+    // 底图：清晰
+    o.drawImage(src, 0, 0);
+    // 柔化：低透明度叠模糊层（soft focus）
+    o.globalCompositeOperation = 'source-over';
+    o.globalAlpha = 0.30 * lvl;
+    o.drawImage(bc, 0, 0, w, h);
+    // 柔光晕：screen 混合模糊亮部（高光轻微溢出，似化学显影）
+    o.globalCompositeOperation = 'screen';
+    o.globalAlpha = 0.16 * lvl;
+    o.drawImage(bc, 0, 0, w, h);
+    o.globalAlpha = 1; o.globalCompositeOperation = 'source-over';
+    return out;
+  }
+
   App.getGradedSource = function (img, fd, intensity) {
     const sw = img && (img.naturalWidth || img.width);
     const sh = img && (img.naturalHeight || img.height);
@@ -113,6 +144,12 @@ window.App = window.App || {};
     const d = x.getImageData(0, 0, c.width, c.height);
     App.gradeImageData(d.data, fd, intensity);
     x.putImageData(d, 0, 0);
+    // 软焦（默认「经典」滤镜开启）：先调色后再做扩散柔化
+    if (fd && fd.soft) {
+      const softCanvas = applySoft(c, fd.soft);
+      _gradeCache.set(key, softCanvas);
+      return softCanvas;
+    }
     _gradeCache.set(key, c);
     return c;
   };
