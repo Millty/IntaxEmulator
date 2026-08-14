@@ -9,7 +9,14 @@
   const { $, $$, el } = App;
 
   /* —— ① 主页 —— */
-  App.registerScreen('home', function () {});
+  App.registerScreen('home', function () { updateHomeDate(); });
+  function updateHomeDate() {
+    const t = $('#homeDate');
+    if (!t) return;
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    t.textContent = d.getFullYear() + ' · ' + p(d.getMonth() + 1) + ' · ' + p(d.getDate());
+  }
   $('#btnAdd').addEventListener('click', () => App.go('select'));
 
   /* —— ② 选相纸 —— */
